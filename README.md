@@ -58,44 +58,7 @@ Once the service is running, visit:
 - **Interactive API docs**: `http://localhost:8000/docs`
 - **ReDoc documentation**: `http://localhost:8000/redoc`
 
-## Configuration
 
-### Environment Variables
-
-Create a `.env` file with the following variables:
-
-```env
-# Database Configuration
-DATABASE_URL=mongodb://localhost:27017/company_data
-MYSQL_URL=mysql+pymysql://user:password@localhost:3306/company_data
-
-# API Keys
-APIFY_API_KEY=your_apify_api_key_here
-SERPAPI_KEY=your_serpapi_key_here
-
-# Redis Configuration
-REDIS_URL=redis://localhost:6379/0
-
-# Application Settings
-APP_NAME=Company Data Scraping Service
-APP_VERSION=1.0.0
-DEBUG=True
-LOG_LEVEL=INFO
-
-# Rate Limiting
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW=3600
-
-# Scraping Configuration
-MAX_CONCURRENT_SCRAPES=5
-REQUEST_TIMEOUT=30
-RETRY_ATTEMPTS=3
-RETRY_DELAY=1
-
-# Data Processing
-MAX_ARTICLES_PER_COMPANY=50
-DATA_CLEANUP_DAYS=30
-```
 
 ## API Endpoints
 
