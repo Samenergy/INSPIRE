@@ -8,7 +8,7 @@ import uvicorn
 
 from app.config import settings
 from app.database_mysql import init_mysql_database
-from app.routers import comprehensive, apify
+from app.routers import comprehensive, apify, classification
 from app.middleware import setup_middleware
 from app.logging_config import setup_logging
 
@@ -38,6 +38,7 @@ setup_middleware(app)
 # Include routers
 app.include_router(comprehensive.router, prefix="/api/v1", tags=["comprehensive-scraping"])
 app.include_router(apify.router, prefix="/api/v1/apify", tags=["apify-linkedin"])
+app.include_router(classification.router, prefix="/api/v1", tags=["article-classification"])
 
 
 @app.get("/")
@@ -55,6 +56,9 @@ async def root():
             "apify_linkedin_advanced": "/api/v1/apify/linkedin-scrape-advanced",
             "apify_status": "/api/v1/apify/status",
             "apify_test_cookie": "/api/v1/apify/test-cookie",
+            "classify_articles": "/api/v1/classify-articles",
+            "classify_articles_traditional": "/api/v1/classify-articles-traditional",
+            "classification_status": "/api/v1/classification-status",
             "docs": "/docs",
             "health": "/health"
         }

@@ -1,7 +1,7 @@
 """Simplified Pydantic models for the company data scraping service."""
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Generic, TypeVar
+from typing import List, Optional, Dict, Any, Generic, TypeVar, Union
 from enum import Enum
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -127,3 +127,29 @@ class APIResponse(BaseModel, Generic[T]):
     message: str
     data: Optional[T] = None
     error: Optional[str] = None
+
+
+# New models for article classification
+class ArticleClassificationRequest(BaseModel):
+    """Request model for article classification."""
+    company_name: str = Field(..., description="Name of the company")
+    company_objectives: str = Field(..., description="Company objectives and goals")
+    csv_filename: str = Field(..., description="Name of the CSV file in exports/ to process (required)")
+
+
+class ArticleClassificationResult(BaseModel):
+    """Result model for article classification."""
+    total_articles: int
+    relevant_articles: int
+    irrelevant_articles: int
+    relevance_score: float  # Percentage of relevant articles
+    filtered_csv_path: str
+    classification_details: List[Dict[str, Any]]
+
+
+class ArticleClassificationResponse(BaseModel):
+    """Response model for article classification."""
+    success: bool
+    message: str
+    data: Optional[ArticleClassificationResult] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
