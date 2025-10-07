@@ -1,30 +1,36 @@
 # Company Data Scraping & Classification Service
 
-A comprehensive FastAPI-based service for scraping company data from multiple sources and classifying articles using advanced machine learning models.
+A comprehensive FastAPI-based service for scraping company data from multiple sources, classifying articles based on MSME (Micro, Small & Medium Enterprises) objectives, and generating intelligent summaries.
 
 ## 🚀 Features
 
-### Data Scraping
+### 🔍 Data Scraping
 - **Google/SerpAPI Integration**: Search and collect company news, information, and LinkedIn URLs
 - **LinkedIn Scraping**: Automated LinkedIn post and update collection via Apify
 - **Multi-Source Aggregation**: Unified data collection from various sources
 - **CSV Export**: Automatic export of all scraped data with timestamps
+- **Real-time Updates**: Track company activities and news
 
-### Machine Learning Classification
+### 🤖 Machine Learning Classification
 - **Transformer-Based Classification**: Uses SentenceTransformer embeddings (all-MiniLM-L6-v2)
 - **High Accuracy**: 95.2% accuracy, F1-Score 0.951
+- **MSME-Focused**: Classify articles based on MSME partnership objectives
 - **Three-Category Classification**:
-  - Directly Relevant
-  - Indirectly Useful
-  - Not Relevant
+  - **Directly Relevant**: Articles directly supporting MSME objectives
+  - **Indirectly Useful**: Articles related to broader MSME ecosystem
+  - **Not Relevant**: Off-topic articles
 - **Hybrid Classification Logic**: Combines ML predictions with weak supervision
-- **Custom Company Objectives**: Classify articles based on specific business needs
+- **Custom Objectives**: Adapt to specific business partnership criteria
+- **Confidence Scores**: Probability scores for each classification
 
-### Text Summarization
+### 📝 Text Summarization
 - **Enhanced Extractive Summarization**: TF-IDF-based sentence ranking
-- **Named Entity Recognition**: Prioritizes important entities
-- **Domain-Specific Keywords**: Optimized for business content
+- **Named Entity Recognition**: Prioritizes important entities (companies, people, locations)
+- **Domain-Specific Keywords**: Optimized for business and MSME content
 - **Numerical Data Prioritization**: Highlights key metrics and statistics
+- **Multi-Domain Support**: General, Business, Technology, Finance
+- **Customizable Length**: Adjustable summary sentence count
+- **Combined Workflow**: Classify and summarize in one request
 
 ## 📋 Table of Contents
 
@@ -108,8 +114,10 @@ curl -X POST "http://localhost:8000/api/v1/scrape" \
 
 ## 📡 API Endpoints
 
-### 1. Comprehensive Scraping
-**Endpoint**: `POST /api/v1/scrape`
+### Scraping Endpoints
+
+#### 1. Comprehensive Company Scraping
+**`POST /api/v1/scrape`**
 
 Scrapes company data from Google/SerpAPI.
 
@@ -123,8 +131,8 @@ Scrapes company data from Google/SerpAPI.
 }
 ```
 
-### 2. LinkedIn Scraping
-**Endpoint**: `POST /api/v1/apify/scrape`
+#### 2. LinkedIn Scraping
+**`POST /api/v1/apify/scrape`**
 
 Scrapes LinkedIn posts and updates.
 
@@ -134,50 +142,155 @@ Scrapes LinkedIn posts and updates.
 }
 ```
 
-### 3. Article Classification
-**Endpoint**: `POST /api/v1/advanced/classify-upload`
+#### 3. Scraping Status
+**`GET /api/v1/status`**
 
-Classifies articles based on company objectives.
+Get comprehensive scraping service status.
+
+### Classification Endpoints
+
+#### 4. Classify Articles from CSV
+**`POST /api/v1/advanced/classify-upload`**
+
+Classifies articles based on MSME objectives.
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/advanced/classify-upload" \
   -F "file=@articles.csv" \
-  -F "company_objective=We provide fintech solutions..."
+  -F "company_objective=We provide fintech solutions for MSMEs..."
 ```
 
-### 4. Model Information
-**Endpoint**: `GET /api/v1/advanced/model-info`
+#### 5. Classify Single Article
+**`POST /api/v1/advanced/classify-text`**
 
-Returns information about the classification model.
+Classify a single article by providing title and content directly.
 
-### 5. Health Check
-**Endpoint**: `GET /health`
+```bash
+curl -X POST "http://localhost:8000/api/v1/advanced/classify-text" \
+  -F "title=Article Title" \
+  -F "content=Article content here..." \
+  -F "company_objective=Your MSME objective"
+```
 
-Check service and database health.
+#### 6. Classification Model Info
+**`GET /api/v1/advanced/model-info`**
+
+Returns information about the classification model (F1-Score: 0.951).
+
+### Summarization Endpoints
+
+#### 7. Summarize Articles from CSV
+**`POST /api/v1/summarization/summarize-upload`**
+
+Generate summaries for all articles in a CSV file.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/summarization/summarize-upload" \
+  -F "file=@articles.csv" \
+  -F "max_sentences=3" \
+  -F "domain=business"
+```
+
+#### 8. Summarize Single Article
+**`POST /api/v1/summarization/summarize-text`**
+
+Summarize a single article directly.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/summarization/summarize-text" \
+  -F "title=Article Title" \
+  -F "content=Long article content here..." \
+  -F "max_sentences=3"
+```
+
+#### 9. Classify & Summarize (Combined)
+**`POST /api/v1/summarization/classify-and-summarize`**
+
+One-stop endpoint: classify articles and automatically summarize relevant ones.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/summarization/classify-and-summarize" \
+  -F "file=@articles.csv" \
+  -F "company_objective=We support MSME digital transformation..." \
+  -F "max_sentences=3"
+```
+
+#### 10. Summarization Service Info
+**`GET /api/v1/summarization/summarization-info`**
+
+Get information about summarization capabilities and domains.
+
+### System Endpoints
+
+#### 11. API Information
+**`GET /`**
+
+Get API overview and available endpoints.
+
+#### 12. Health Check
+**`GET /health`**
+
+Check service and database health status.
 
 ## 📁 Project Structure
 
 ```
 Cappp/
-├── app/                    # FastAPI application
-│   ├── routers/           # API endpoints
-│   ├── services/          # Business logic
-│   ├── scrapers/          # Scraping implementations
-│   └── utils/             # Utilities
-├── ml_models/             # Trained ML models
-│   ├── classification/    # Classification models
-│   └── summarization/     # Summarization models
-├── notebooks/             # Jupyter notebooks
-├── scripts/               # Training & utility scripts
-│   ├── training/         # Model training
-│   ├── inference/        # Model inference
-│   └── database/         # Database scripts
-├── documentation/         # Project documentation
-└── exports/              # CSV exports
+├── app/                          # FastAPI Application
+│   ├── routers/                  # API Route Handlers
+│   │   ├── comprehensive.py      # Google/SerpAPI scraping endpoints
+│   │   ├── apify.py             # LinkedIn scraping endpoints
+│   │   ├── advanced_classification.py  # Article classification endpoints
+│   │   └── summarization.py     # Article summarization endpoints
+│   ├── services/                 # Business Logic Services
+│   │   ├── advanced_model_service.py      # ML classification service
+│   │   ├── advanced_data_processor.py     # Data processing utilities
+│   │   ├── enhanced_summarization_model.py # Enhanced summarization
+│   │   ├── summarization_service.py       # Summarization service
+│   │   ├── summarization_model.py         # Base summarization model
+│   │   ├── comprehensive_scrape_service.py # Scraping orchestration
+│   │   ├── csv_export_service.py          # CSV export utilities
+│   │   └── company_service_simplified.py  # Company CRUD operations
+│   ├── scrapers/                 # Scraping Implementations
+│   │   ├── base.py              # Base scraper interface
+│   │   ├── serpapi_scraper.py   # Google/SerpAPI scraper
+│   │   └── apify_scraper.py     # LinkedIn scraper
+│   ├── utils/                    # Utility Modules
+│   │   ├── rate_limiter.py      # Rate limiting
+│   │   └── retry.py             # Retry logic
+│   ├── models.py                 # Pydantic data models
+│   ├── database_mysql.py         # MySQL database connection
+│   ├── config.py                 # Application configuration
+│   ├── middleware.py             # FastAPI middleware
+│   └── main.py                   # Application entry point
+│
+├── ml_models/                    # Machine Learning Models
+│   ├── classification/           # Article Classification Models
+│   │   └── best_model/          # Production classification model
+│   │       ├── best_classifier.pkl        # Trained Logistic Regression
+│   │       ├── scaler.pkl                 # Feature scaler
+│   │       ├── model_config.json          # Model configuration
+│   │       ├── sentence_model_info.json   # Sentence transformer info
+│   │       └── complete_analysis_results.csv
+│   ├── summarization/            # Text Summarization Models
+│   │   └── summarization_model.pkl  # Summarization model
+│   ├── evaluation_results.json   # Classification evaluation metrics
+│   └── summarization_evaluation_results.json
+│
+├── exports/                      # CSV Exports (Generated)
+│   └── README.md                # Exports documentation
+│
+├── logs/                         # Application Logs
+│   └── errors.log               # Error logs
+│
+├── Dockerfile                    # Docker container configuration
+├── docker-compose.yml            # Docker Compose configuration
+├── nginx.conf                    # Nginx configuration
+├── requirements.txt              # Python dependencies
+├── setup_mysql.sql               # MySQL setup script
+└── config.env.example            # Example environment configuration
 
 ```
-
-See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for detailed structure.
 
 ## 🤖 Model Information
 
@@ -198,17 +311,22 @@ See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for detailed structure.
 - Penalty mechanism for off-topic content
 - Hybrid classification combining ML + weak supervision
 
-### Experiments Conducted
+### Model Training & Experiments
 
-The project includes 2 main classification experiments (see `notebooks/ML_Model_Notebook.ipynb`):
+The classification model was trained using weak supervision with 2 main experiments:
 
 1. **Random Forest Classifier**
    - Accuracy: 85.5%
+   - Precision: 0.877
+   - Recall: 0.855
    - F1-Score: 0.810
 
-2. **Logistic Regression** ⭐ (Selected)
+2. **Logistic Regression** ⭐ (Production Model)
    - Accuracy: 95.2%
+   - Precision: 0.951
+   - Recall: 0.952
    - F1-Score: 0.951
+   - **Selected for production use**
 
 ## ⚙️ Configuration
 
@@ -300,43 +418,53 @@ for result in results['results']:
 
 ## 🔬 Development
 
-### Training New Models
+### Working with ML Models
+
+The trained models are stored in `ml_models/` directory:
 
 ```bash
-# Train classification model
-python scripts/training/train_simple_classifier.py
+# Classification model location
+ml_models/classification/best_model/
+  ├── best_classifier.pkl           # Logistic Regression model
+  ├── scaler.pkl                    # Feature scaler
+  ├── model_config.json             # Model configuration
+  └── sentence_model_info.json      # Embedding model info
 
-# Train with different approaches
-python scripts/training/train_all_approaches.py
-
-# Train summarization model
-python scripts/training/train_summarization_simple.py
+# Summarization model location
+ml_models/summarization/
+  └── summarization_model.pkl       # Summarization model
 ```
 
-### Running Inference
+### Using Models Programmatically
 
-```bash
-# Test classification model
-python scripts/inference/inference_trained_model.py
+```python
+# Load classification model
+from app.services.advanced_model_service import AdvancedModelService
+model_service = AdvancedModelService()
+print(f"Model loaded: {model_service.is_model_loaded()}")
 
-# Compare models
-python scripts/inference/compare_models.py
-```
-
-### Running Notebooks
-
-```bash
-jupyter notebook notebooks/
+# Load summarization model
+from app.services.summarization_service import SummarizationService
+summ_service = SummarizationService()
+summary = summ_service.summarize_article(content="...", title="...")
 ```
 
 ## 📚 Documentation
 
-Detailed documentation is available in the `documentation/` folder:
+### API Documentation
 
-- **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)**: Complete project structure
-- **[TRAINING_GUIDE.md](documentation/TRAINING_GUIDE.md)**: Model training guide
-- **[Classification_Model_README.md](documentation/Classification_Model_README.md)**: Classification model details
-- **[SUMMARIZATION_IMPROVEMENTS.md](documentation/SUMMARIZATION_IMPROVEMENTS.md)**: Summarization enhancements
+Once the server is running, comprehensive API documentation is available at:
+
+- **Swagger UI**: http://localhost:8000/docs - Interactive API documentation
+- **ReDoc**: http://localhost:8000/redoc - Alternative documentation view
+
+### Quick Reference
+
+**Key Features:**
+- 🔍 **Scraping**: Multi-source company data collection
+- 🤖 **Classification**: ML-based article relevance classification (F1: 0.951)
+- 📝 **Summarization**: Enhanced extractive summarization
+- 📊 **Export**: CSV export for all operations
 
 ## 🧪 Testing
 
@@ -389,6 +517,27 @@ docker-compose down
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+## 📊 Model Performance Summary
+
+### Classification Model
+| Metric | Value |
+|--------|-------|
+| Model Type | Logistic Regression + SentenceTransformer |
+| Embeddings | all-MiniLM-L6-v2 (384 dims) |
+| Accuracy | 95.2% |
+| Precision | 0.951 |
+| Recall | 0.952 |
+| F1-Score | 0.951 |
+| Training Method | Weak Supervision |
+
+### Summarization Model
+| Feature | Description |
+|---------|-------------|
+| Type | Enhanced Extractive Summarization |
+| Technique | TF-IDF + Named Entity Recognition |
+| Domains | General, Business, Technology, Finance |
+| Default Length | 3 sentences |
+
 ## 📝 License
 
 [Add your license information here]
@@ -402,8 +551,10 @@ docker-compose down
 
 ## 📧 Contact
 
-[Add your contact information here]
+For questions or support, please refer to the API documentation at `/docs` endpoint.
 
 ---
 
-**Note**: This project uses weak supervision for training classification models without requiring manually labeled data. The approach achieves high accuracy by using semantic similarity to company objectives combined with keyword-based boosting and penalty systems.
+**Technology Stack**: Python 3.9+ • FastAPI • MySQL • Docker • SentenceTransformers • scikit-learn
+
+**Note**: This project uses weak supervision for training classification models without requiring manually labeled data. The approach achieves 95.2% accuracy by using semantic similarity to MSME objectives combined with keyword-based boosting and penalty systems.
