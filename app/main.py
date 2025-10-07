@@ -8,7 +8,7 @@ import uvicorn
 
 from app.config import settings
 from app.database_mysql import init_mysql_database
-from app.routers import comprehensive, apify, classification
+from app.routers import comprehensive, apify, advanced_classification, summarization
 from app.middleware import setup_middleware
 from app.logging_config import setup_logging
 
@@ -36,9 +36,10 @@ app = FastAPI(
 setup_middleware(app)
 
 # Include routers
-app.include_router(comprehensive.router, prefix="/api/v1", tags=["comprehensive-scraping"])
-app.include_router(apify.router, prefix="/api/v1/apify", tags=["apify-linkedin"])
-app.include_router(classification.router, prefix="/api/v1", tags=["article-classification"])
+app.include_router(comprehensive.router, prefix="/api/v1", tags=["Google-scraping"])
+app.include_router(apify.router, prefix="/api/v1/apify", tags=["Linkedin-scraping"])
+app.include_router(advanced_classification.router, prefix="/api/v1/advanced", tags=["Article Classification based on MSMEs objectives"])
+app.include_router(summarization.router, prefix="/api/v1/summarization", tags=["Article Summarization"])
 
 
 @app.get("/")
@@ -51,14 +52,12 @@ async def root():
         "endpoints": {
             "comprehensive_scrape": "/api/v1/scrape",
             "comprehensive_status": "/api/v1/status",
-            "apify_linkedin_scrape": "/api/v1/apify/linkedin-scrape",
-            "apify_simple_scrape": "/api/v1/apify/scrape",
-            "apify_linkedin_advanced": "/api/v1/apify/linkedin-scrape-advanced",
-            "apify_status": "/api/v1/apify/status",
-            "apify_test_cookie": "/api/v1/apify/test-cookie",
-            "classify_articles": "/api/v1/classify-articles",
-            "classify_articles_traditional": "/api/v1/classify-articles-traditional",
-            "classification_status": "/api/v1/classification-status",
+            "apify_scrape": "/api/v1/apify/scrape",
+            "classify_upload": "/api/v1/advanced/classify-upload",
+            "model_info": "/api/v1/advanced/model-info",
+            "summarize_upload": "/api/v1/summarization/summarize-upload",
+            "summarize_text": "/api/v1/summarization/summarize-text",
+            "classify_and_summarize": "/api/v1/summarization/classify-and-summarize",
             "docs": "/docs",
             "health": "/health"
         }
