@@ -140,10 +140,14 @@ PORT=8080 python app/main.py
 ```
 
 The API will be available at:
-- **API**: http://localhost:8000
-- **Swagger Docs**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **Health Check**: http://localhost:8000/health
+- **Production API**: https://inspire-4.onrender.com
+- **Swagger Docs**: https://inspire-4.onrender.com/docs
+- **ReDoc**: https://inspire-4.onrender.com/redoc
+- **Health Check**: https://inspire-4.onrender.com/health
+
+For local development:
+- **Local API**: http://localhost:8000
+- **Local Docs**: http://localhost:8000/docs
 
 ### Quick Test - Classify Articles (No Setup Required!)
 
@@ -156,12 +160,12 @@ Fintech startup raises funding,A new fintech company in Rwanda secured funding f
 Agriculture news,New farming techniques introduced in rural areas" > test_articles.csv
 
 # 2. Classify the articles
-curl -X POST "http://localhost:8000/api/v1/advanced/classify-upload" \
+curl -X POST "https://inspire-4.onrender.com/api/v1/advanced/classify-upload" \
   -F "file=@test_articles.csv" \
   -F "company_objective=We provide digital payment solutions for MSMEs in Africa"
 
 # 3. Summarize an article
-curl -X POST "http://localhost:8000/api/v1/summarization/summarize-text" \
+curl -X POST "https://inspire-4.onrender.com/api/v1/summarization/summarize-text" \
   -F "title=Fintech Growth in Rwanda" \
   -F "content=The fintech sector in Rwanda is experiencing rapid growth with new startups emerging. Digital payment solutions are becoming more accessible to small businesses. Mobile money adoption has increased by 40% in the past year." \
   -F "max_sentences=3"
@@ -413,9 +417,12 @@ APP_VERSION=1.0.0
 import requests
 import pandas as pd
 
-# 1. Scrape company data
+# Production API URL
+API_URL = "https://inspire-4.onrender.com"
+
+# 1. Scrape company data (requires API keys)
 response = requests.post(
-    "http://localhost:8000/api/v1/scrape",
+    f"{API_URL}/api/v1/scrape",
     json={
         "name": "Microsoft",
         "location": "United States"
@@ -423,14 +430,14 @@ response = requests.post(
 )
 data = response.json()
 
-# 2. Classify articles
+# 2. Classify articles (works without API keys!)
 df = pd.read_csv("articles.csv")
 files = {'file': open('articles.csv', 'rb')}
 data = {
-    'company_objective': 'We provide digital payment solutions in Africa'
+    'company_objective': 'We provide digital payment solutions for MSMEs in Africa'
 }
 response = requests.post(
-    "http://localhost:8000/api/v1/advanced/classify-upload",
+    f"{API_URL}/api/v1/advanced/classify-upload",
     files=files,
     data=data
 )
@@ -524,12 +531,15 @@ Once the server is running, comprehensive API documentation is available at:
 ## 🧪 Testing
 
 ```bash
-# Test model loading
+# Test model loading (local)
 python -c "from app.services.advanced_model_service import AdvancedModelService; \
            service = AdvancedModelService(); \
            print('✓ Model loaded:', service.is_model_loaded())"
 
-# Test API health
+# Test API health (production)
+curl https://inspire-4.onrender.com/health
+
+# Test API health (local development)
 curl http://localhost:8000/health
 ```
 
@@ -648,7 +658,8 @@ cd INSPIRE
 **Project Lead**: Samuel Energy  
 **GitHub**: [@Samenergy](https://github.com/Samenergy)  
 **Repository**: [INSPIRE](https://github.com/Samenergy/INSPIRE.git)  
-**API Documentation**: http://localhost:8000/docs
+**Production API**: https://inspire-4.onrender.com  
+**API Documentation**: https://inspire-4.onrender.com/docs
 
 ---
 
