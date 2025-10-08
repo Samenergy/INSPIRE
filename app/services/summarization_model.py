@@ -8,3 +8,4 @@ from app.services.enhanced_summarization_model import EnhancedSummarizationModel
 
 # Export for easy import
 __all__ = ['SummarizationModel']
+
