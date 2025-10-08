@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 from app.config import settings
-from app.database_mysql import init_mysql_database
+# from app.database_mysql import init_mysql_database  # DB connection disabled
 from app.routers import comprehensive, apify, advanced_classification, summarization
 from app.middleware import setup_middleware
 from app.logging_config import setup_logging
@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     setup_logging()
-    await init_mysql_database()
+    # await init_mysql_database()  # DB connection disabled
     yield
     # Shutdown
     pass
@@ -67,20 +67,12 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    try:
-        from app.database_mysql import get_mysql_engine
-        from sqlalchemy import text
-        engine = await get_mysql_engine()
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT 1"))
-        
-        return {
-            "status": "healthy",
-            "database": "mysql_connected",
-            "version": settings.app_version
-        }
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+    return {
+        "status": "healthy",
+        "database": "disabled",
+        "version": settings.app_version,
+        "message": "API is running without database connection"
+    }
 
 
 if __name__ == "__main__":
