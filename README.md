@@ -86,15 +86,16 @@ The platform leverages two advanced machine learning models:
 
 ### Prerequisites
 - Python 3.9+
-- MySQL 8.0+
-- Docker (optional)
+- Docker (optional, for containerized deployment)
+
+**Note**: MySQL database is optional - the application works without it for classification and summarization endpoints.
 
 ### Setup
 
 1. **Clone the repository**
 ```bash
-git clone <repository-url>
-cd Cappp
+git clone https://github.com/Samenergy/INSPIRE.git
+cd INSPIRE
 ```
 
 2. **Install dependencies**
@@ -102,52 +103,68 @@ cd Cappp
 pip install -r requirements.txt
 ```
 
-3. **Install Playwright** (for web scraping)
-```bash
-bash scripts/install_playwright.sh
-playwright install
-```
-
-4. **Configure environment**
+3. **Configure environment (Optional)**
 ```bash
 cp config.env.example .env
-# Edit .env with your API keys and database credentials
+# Edit .env with your API keys if using scraping features
 ```
 
-5. **Setup database**
-```bash
-mysql -u root -p < setup_mysql.sql
-```
+**Required API Keys** (only if using scraping endpoints):
+- `SERPAPI_API_KEY` - For Google/News scraping
+- `APIFY_API_KEY` - For LinkedIn scraping
+
+**Note**: Classification and Summarization work without API keys or database!
 
 ## 🚀 Quick Start
 
 ### Running the API
 
-**Development Mode:**
+**Option 1: Python directly**
 ```bash
 python app/main.py
 ```
 
-**Docker Mode:**
+**Option 2: Using uvicorn**
+```bash
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Option 3: Docker (includes MySQL)**
 ```bash
 docker-compose up --build
+```
+
+**Option 4: With custom port**
+```bash
+PORT=8080 python app/main.py
 ```
 
 The API will be available at:
 - **API**: http://localhost:8000
 - **Swagger Docs**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
+- **Health Check**: http://localhost:8000/health
 
-### First API Call
+### Quick Test - Classify Articles (No Setup Required!)
+
+The classification and summarization endpoints work immediately without any database or API key setup:
 
 ```bash
-# Scrape company data
-curl -X POST "http://localhost:8000/api/v1/scrape" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Microsoft",
-    "location": "United States"
-  }'
+# 1. Create a test CSV file with articles
+echo "title,content
+Fintech startup raises funding,A new fintech company in Rwanda secured funding for digital payments
+Agriculture news,New farming techniques introduced in rural areas" > test_articles.csv
+
+# 2. Classify the articles
+curl -X POST "http://localhost:8000/api/v1/advanced/classify-upload" \
+  -F "file=@test_articles.csv" \
+  -F "company_objective=We provide digital payment solutions for MSMEs in Africa"
+
+# 3. Summarize an article
+curl -X POST "http://localhost:8000/api/v1/summarization/summarize-text" \
+  -F "title=Fintech Growth in Rwanda" \
+  -F "content=The fintech sector in Rwanda is experiencing rapid growth with new startups emerging. Digital payment solutions are becoming more accessible to small businesses. Mobile money adoption has increased by 40% in the past year." \
+  -F "max_sentences=3"
 ```
 
 ## 📡 API Endpoints
