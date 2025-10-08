@@ -32,6 +32,23 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Configure CORS
+origins = [
+    "https://inspire-4.onrender.com",  # Production domain
+    "http://localhost",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",  # Common frontend dev port
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Setup middleware
 setup_middleware(app)
 
