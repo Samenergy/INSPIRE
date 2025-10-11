@@ -6,7 +6,14 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## 🎥 Video Presentation
+**Watch how it works**: [Video Demonstration](https://drive.google.com/drive/folders/1TVD83-Osuan3b2CawyzfUeLEkrfCp0Uq?usp=sharing)
+
+---
+
 A comprehensive B2B intelligence platform powered by AI, specifically designed to empower Rwandan MSMEs (Micro, Small & Medium Enterprises) with actionable market intelligence and partnership opportunities.
+
+**GitHub Repository**: [https://github.com/Samenergy/INSPIRE.git](https://github.com/Samenergy/INSPIRE.git)
 
 ## 🎯 Project Vision
 
@@ -35,10 +42,6 @@ The platform leverages two advanced machine learning models:
 - Enables rapid information processing for busy entrepreneurs
 
 ---
-
-## 📊 Repository
-
-**GitHub**: [https://github.com/Samenergy/INSPIRE.git](https://github.com/Samenergy/INSPIRE.git)
 
 ## 🚀 Features
 
@@ -543,20 +546,6 @@ curl https://inspire-4.onrender.com/health
 curl http://localhost:8000/health
 ```
 
-## 📊 Model Performance
-
-### Classification Results
-
-| Model | Accuracy | Precision | Recall | F1-Score |
-|-------|----------|-----------|--------|----------|
-| Random Forest | 0.855 | 0.877 | 0.855 | 0.810 |
-| **Logistic Regression** | **0.952** | **0.951** | **0.952** | **0.951** |
-
-### Classification Categories Distribution
-
-- **Directly Relevant**: Articles that directly support company objectives
-- **Indirectly Useful**: Articles related to the broader ecosystem
-- **Not Relevant**: Articles with no meaningful connection
 
 ## 🐳 Docker Deployment
 
@@ -581,27 +570,6 @@ docker-compose down
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## 📊 Model Performance Summary
-
-### Classification Model
-| Metric | Value |
-|--------|-------|
-| Model Type | Logistic Regression + SentenceTransformer |
-| Embeddings | all-MiniLM-L6-v2 (384 dims) |
-| Accuracy | 95.2% |
-| Precision | 0.951 |
-| Recall | 0.952 |
-| F1-Score | 0.951 |
-| Training Method | Weak Supervision |
-
-### Summarization Model
-| Feature | Description |
-|---------|-------------|
-| Type | Enhanced Extractive Summarization |
-| Technique | TF-IDF + Named Entity Recognition |
-| Domains | General, Business, Technology, Finance |
-| Default Length | 3 sentences |
 
 ## 🌍 Impact on Rwandan MSMEs
 
@@ -628,18 +596,6 @@ I.N.S.P.I.R.E provides:
 
 ---
 
-## 📂 Project Repository
-
-**GitHub**: [https://github.com/Samenergy/INSPIRE.git](https://github.com/Samenergy/INSPIRE.git)
-
-```bash
-# Clone the repository
-git clone https://github.com/Samenergy/INSPIRE.git
-cd INSPIRE
-```
-
----
-
 ## 📝 License
 
 [Add your license information here]
@@ -663,18 +619,6 @@ cd INSPIRE
 
 ---
 
-## 🇷🇼 Built for Rwanda, Scalable for Africa
+*Bridging the gap between innovation inputs and economic outputs in Rwanda* 🇷🇼 
 
 **I.N.S.P.I.R.E** - Empowering MSMEs through Intelligent Business Intelligence
-
-**Technology Stack**: Python 3.9+ • FastAPI • MySQL • Docker • SentenceTransformers • scikit-learn
-
-**Key Innovation**: Uses weak supervision for training classification models without requiring manually labeled data, achieving 95.2% accuracy through semantic similarity to MSME objectives combined with keyword-based boosting and penalty systems.
-
-**Two AI Models**:
-1. **Classification Model**: Categorizes articles by relevance (Directly Relevant, Indirectly Useful, Not Relevant)
-2. **Summarization Model**: Generates concise 3-sentence summaries preserving key business intelligence
-
----
-
-*Bridging the gap between innovation inputs and economic outputs in Rwanda* 🇷🇼

@@ -401,31 +401,40 @@ class ApifyScraper(BaseScraper):
                         data = await response.json()
                         status = data.get("data", {}).get("status")
                         
+                        # Log progress every 30 seconds
+                        if wait_time % 30 == 0:
+                            logger.info(f"Actor run {run_id} status: {status} (waited {wait_time}s)")
+                        
                         if status == "SUCCEEDED":
                             # Get the results
                             results_url = f"{self.base_url}/actor-runs/{run_id}/dataset/items"
                             async with session.get(results_url) as results_response:
                                 if results_response.status == 200:
-                                    return await results_response.json()
+                                    results = await results_response.json()
+                                    logger.info(f"Successfully retrieved {len(results)} items from actor run {run_id}")
+                                    return results
                                 else:
                                     logger.error(f"Failed to get results: {results_response.status}")
                                     return []
                         elif status in ["FAILED", "ABORTED", "TIMED-OUT"]:
-                            logger.error(f"Actor run {run_id} failed with status: {status}")
+                            error_message = data.get("data", {}).get("statusMessage", "No error message")
+                            logger.error(f"Actor run {run_id} failed with status: {status}, message: {error_message}")
                             return []
                         else:
                             # Still running, wait and check again
                             await asyncio.sleep(10)
                             wait_time += 10
                     else:
-                        logger.error(f"Failed to check run status: {response.status}")
-                        return None
+                        error_text = await response.text()
+                        logger.error(f"Failed to check run status: {response.status} - {error_text}")
+                        return []
                         
             logger.error(f"Actor run {run_id} timed out")
             return []
             
         except Exception as e:
-            logger.error(f"Error getting actor results: {e}")
+            logger.error(f"Error getting actor results: {str(e)}")
+            logger.exception(f"Full error traceback for run {run_id}:")
             return []
     
     def _parse_date(self, date_str: Optional[str]) -> Optional[datetime]:
