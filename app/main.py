@@ -8,7 +8,7 @@ import uvicorn
 
 from app.config import settings
 # from app.database_mysql import init_mysql_database  # DB connection disabled
-from app.routers import comprehensive, apify, advanced_classification, summarization, intelligence_extraction, company_profile
+from app.routers import comprehensive, apify, advanced_classification, summarization, intelligence_extraction, company_profile, comprehensive_analysis
 from app.middleware import setup_middleware
 from app.logging_config import setup_logging
 
@@ -59,6 +59,7 @@ app.include_router(advanced_classification.router, prefix="/api/v1/advanced", ta
 app.include_router(summarization.router, prefix="/api/v1/summarization", tags=["Article Summarization"])
 app.include_router(intelligence_extraction.router, prefix="/api/v1/intelligence", tags=["Company Intelligence Extraction"])
 app.include_router(company_profile.router, prefix="/api/v1/profile", tags=["Company Profile Generator ⭐"])
+app.include_router(comprehensive_analysis.router, prefix="/api/v1/analysis", tags=["Comprehensive Analysis (7 Questions) 🎯"])
 
 
 @app.get("/")
@@ -94,6 +95,10 @@ async def root():
                 "generate": "/api/v1/profile/generate",
                 "generate_formatted": "/api/v1/profile/generate-formatted",
                 "info": "/api/v1/profile/info"
+            },
+            "comprehensive_analysis": {
+                "analyze": "/api/v1/analysis/analyze",
+                "info": "/api/v1/analysis/info"
             },
             "system": {
                 "docs": "/docs",
