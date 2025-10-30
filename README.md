@@ -143,21 +143,3 @@ Cappp/
 ├── ERD.png                 # Data model overview
 └── ...
 ```
-
----
-
-## License
-
-[MIT](LICENSE) or as specified.
-
----
-
-**For questions/support, please refer to the [Help & Support page in the app](http://localhost:3000/help) or contact the maintainer directly.**
-
----
-
----
-
-**ENGLISH & FRENCH:**
-(Ajoutez vos sections françaises après chaque bloc ou demandez une version française complète si besoin.)  
-Si vous souhaitez la version complète en français, dites-le.
