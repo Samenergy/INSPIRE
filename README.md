@@ -90,7 +90,7 @@ npm run dev    # Local: http://localhost:3000
 
 ## Demo Video (5 Minutes)
 
-*A 5-minute demo recording is available here: [[ADD YOUR VIDEO LINK HERE](https://www.youtube.com/watch?v=1FpCMQ7yAhA)]*  
+*A 5-minute demo recording is available here: [[VIDEO LINK HERE](https://www.youtube.com/watch?v=1FpCMQ7yAhA)]*  
 <!-- Please add a link to a Loom/YouTube or similar hosted walkthrough. -->
 
 ---
