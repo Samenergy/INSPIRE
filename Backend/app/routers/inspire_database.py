@@ -411,13 +411,18 @@ async def get_articles_by_classification(
         raise HTTPException(status_code=500, detail=f"Error retrieving articles: {str(e)}")
 
 # Analysis Endpoints
-@router.get("/companies/{company_id}/analysis", response_model=INSPIREResponse[Analysis])
+@router.get("/companies/{company_id}/analysis", response_model=INSPIREResponse[Optional[Analysis]])
 async def get_latest_analysis_for_company(company_id: int):
     """Get the latest analysis for a specific company"""
     try:
         analysis = await inspire_db.get_latest_analysis_for_company(company_id)
         if not analysis:
-            raise HTTPException(status_code=404, detail=f"No analysis found for company ID {company_id}")
+            # Return success with None data instead of 404
+            return INSPIREResponse(
+                success=True,
+                message=f"No analysis found for company ID {company_id}",
+                data=None
+            )
         
         # Transform the data to match the Analysis model
         # Convert uppercase analysis_type to lowercase, and add confidence_score if missing
@@ -443,8 +448,6 @@ async def get_latest_analysis_for_company(company_id: int):
             message="Analysis retrieved successfully",
             data=transformed_analysis
         )
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error retrieving analysis: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving analysis: {str(e)}")

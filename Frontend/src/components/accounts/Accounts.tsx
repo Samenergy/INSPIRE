@@ -1088,6 +1088,10 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       formData.append('sme_id', user.sme_id.toString());
       formData.append('sme_objective', sme_objective);
       formData.append('max_articles', '100');
+      // Pass company_id if available (when manually analyzing an existing company)
+      if (selectedCompany.id) {
+        formData.append('company_id', selectedCompany.id.toString());
+      }
 
       const response = await fetch('http://localhost:8000/api/v1/unified/unified-analysis', {
         method: 'POST',
@@ -1598,6 +1602,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         formData.append('sme_id', String(sme_id));
         formData.append('sme_objective', user.objective || '');
         formData.append('max_articles', '100');
+        formData.append('company_id', String(newCompanyId)); // Pass the newly created company ID
           
         const analysisResponse = await fetch('http://localhost:8000/api/v1/unified/unified-analysis', {
           method: 'POST',

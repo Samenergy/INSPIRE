@@ -68,7 +68,8 @@ async def unified_company_analysis(
     company_location: str = Form(..., description="Location of the company"),
     sme_id: int = Form(..., description="Your SME ID"),
     sme_objective: str = Form(..., description="Your SME's objectives and capabilities"),
-    max_articles: int = Form(100, description="Maximum number of articles to scrape (default: 100)")
+    max_articles: int = Form(100, description="Maximum number of articles to scrape (default: 100)"),
+    company_id: Optional[int] = Form(None, description="Optional: Existing company ID to use (if not provided, will search by name)")
 ):
     """
     Unified endpoint that:
@@ -193,23 +194,33 @@ async def unified_company_analysis(
         logger.info("💾 Step 3/3: Storing classified articles in database...")
         
         # First, get or create company
-        company = await inspire_db.get_company_by_name(company_name)
-        company_id = None
-        
-        if not company:
-            # Create company with sme_id
-            company_id = await inspire_db.create_company(
-                name=company_name,
-                location=company_location,
-                sme_id=sme_id
-            )
-            logger.info(f"📝 Created new company record: {company_name} (ID: {company_id})")
+        # If company_id is provided, use it directly (e.g., from frontend after creating company)
+        if company_id:
+            company = await inspire_db.get_company(company_id)
+            if not company:
+                raise HTTPException(status_code=404, detail=f"Company with ID {company_id} not found")
+            # Verify it belongs to the correct SME
+            if company.get('sme_id') and company['sme_id'] != sme_id:
+                raise HTTPException(status_code=403, detail="Company does not belong to this SME")
+            logger.info(f"📝 Using provided company ID: {company_name} (ID: {company_id})")
         else:
-            company_id = company['company_id']
-            # Update company with sme_id if not set
-            if not company.get('sme_id'):
-                await inspire_db.update_company(company_id, sme_id=sme_id)
-            logger.info(f"📝 Found existing company: {company_name} (ID: {company_id})")
+            # Search by name, filtered by sme_id to avoid finding other SMEs' companies
+            company = await inspire_db.get_company_by_name(company_name, sme_id=sme_id)
+            
+            if not company:
+                # Create company with sme_id
+                company_id = await inspire_db.create_company(
+                    name=company_name,
+                    location=company_location,
+                    sme_id=sme_id
+                )
+                logger.info(f"📝 Created new company record: {company_name} (ID: {company_id})")
+            else:
+                company_id = company['company_id']
+                # Update company with sme_id if not set
+                if not company.get('sme_id'):
+                    await inspire_db.update_company(company_id, sme_id=sme_id)
+                logger.info(f"📝 Found existing company: {company_name} (ID: {company_id})")
         
         # Store classified articles
         articles_stored = 0

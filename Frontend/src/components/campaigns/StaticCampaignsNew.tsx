@@ -579,7 +579,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography variant="subtitle1" fontWeight="bold" noWrap sx={{ mb: 0.5 }}>
                             {displayTitle}
-                          </Typography>
+                        </Typography>
                           {campaign.company_name && (
                             <Typography variant="body2" color="primary" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <BusinessIcon sx={{ fontSize: '0.875rem' }} />
@@ -702,9 +702,9 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                       }
                       
                       return (
-                        <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
+                    <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
                           {displayTitle}
-                        </Typography>
+                    </Typography>
                       );
                     })()}
                     <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
@@ -716,12 +716,12 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                         label={selectedCampaign.status.toUpperCase()}
                         sx={{
                           backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
-                          transition: 'transform 0.2s ease',
-                          '&:hover': {
-                            transform: 'scale(1.05)'
-                          }
-                        }}
-                      />
+                            transition: 'transform 0.2s ease',
+                            '&:hover': {
+                              transform: 'scale(1.05)'
+                            }
+                          }}
+                        />
                     </Box>
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1 }}>
@@ -914,17 +914,17 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                                 </Typography>
                               </Box>
                             )}
-                            <Typography
-                              variant="body1"
-                              component="div"
-                              sx={{
-                                whiteSpace: 'pre-wrap',
+                  <Typography
+                    variant="body1"
+                    component="div"
+                    sx={{
+                      whiteSpace: 'pre-wrap',
                                 lineHeight: 1.8,
                                 color: 'text.primary',
-                              }}
-                            >
+                    }}
+                  >
                               {emailParts.body.length > 0 ? emailParts.body.join('\n') : formattedContent}
-                            </Typography>
+                  </Typography>
                           </Box>
                         );
                       }

@@ -267,10 +267,14 @@ class InspireDatabaseService:
         results = await self.db.execute_query(query, (company_id,))
         return results[0] if results else None
     
-    async def get_company_by_name(self, name: str) -> Optional[Dict[str, Any]]:
-        """Get company by name"""
-        query = "SELECT * FROM company WHERE name = %s"
-        results = await self.db.execute_query(query, (name,))
+    async def get_company_by_name(self, name: str, sme_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Get company by name, optionally filtered by sme_id"""
+        if sme_id:
+            query = "SELECT * FROM company WHERE name = %s AND sme_id = %s LIMIT 1"
+            results = await self.db.execute_query(query, (name, sme_id))
+        else:
+            query = "SELECT * FROM company WHERE name = %s LIMIT 1"
+            results = await self.db.execute_query(query, (name,))
         return results[0] if results else None
     
     async def get_all_companies(self, sme_id: int = None) -> List[Dict[str, Any]]:

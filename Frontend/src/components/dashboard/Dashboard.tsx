@@ -225,7 +225,7 @@ const Dashboard: React.FC = () => {
         ],
         borderWidth: 0,
         borderRadius: 8,
-      },
+  },
     ],
   };
 
@@ -311,8 +311,8 @@ const Dashboard: React.FC = () => {
         },
         ticks: {
           color: mode === 'dark' ? '#a0a0a0' : '#5f6368',
+          },
         },
-      },
       y: {
         grid: {
           color: mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
@@ -321,7 +321,7 @@ const Dashboard: React.FC = () => {
           color: mode === 'dark' ? '#a0a0a0' : '#5f6368',
         },
       },
-    },
+          },
   };
 
   const StatCard: React.FC<{
@@ -333,7 +333,7 @@ const Dashboard: React.FC = () => {
   }> = ({ title, value, icon, color, onClick }) => (
     <Card
       onClick={onClick}
-      sx={{
+        sx={{ 
         height: '100%',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'all 0.2s ease-in-out',
@@ -351,11 +351,11 @@ const Dashboard: React.FC = () => {
           <Box>
             <Typography variant="h4" fontWeight="bold" color={color}>
               {typeof value === 'number' ? value.toLocaleString() : value}
-            </Typography>
+      </Typography>
             <Typography variant="body2" color="text.secondary" mt={1}>
               {title}
-            </Typography>
-          </Box>
+          </Typography>
+        </Box>
           <Box
             sx={{
               color: color,
@@ -363,7 +363,7 @@ const Dashboard: React.FC = () => {
             }}
           >
             {icon}
-          </Box>
+        </Box>
         </Box>
       </CardContent>
     </Card>
@@ -379,7 +379,7 @@ const Dashboard: React.FC = () => {
         <Typography variant="body2" color="text.secondary">
           Real-time insights into your company analysis and outreach activities
         </Typography>
-      </Box>
+            </Box>
 
       {/* Key Metrics */}
       <Grid container spacing={3} mb={4}>
@@ -391,7 +391,7 @@ const Dashboard: React.FC = () => {
             color={themeColors.primary}
             onClick={() => navigate('/companies')}
           />
-        </Grid>
+          </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Articles Analyzed"
@@ -426,7 +426,7 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Analysis Completion Rate
-              </Typography>
+                </Typography>
               <Box display="flex" alignItems="center" mb={2}>
                 <Typography variant="h3" fontWeight="bold" color={themeColors.success} mr={2}>
                   {stats.analysis_completion_rate.toFixed(1)}%
@@ -436,18 +436,18 @@ const Dashboard: React.FC = () => {
               <LinearProgress
                 variant="determinate"
                 value={stats.analysis_completion_rate}
-                sx={{
+                    sx={{
                   height: 8,
                   borderRadius: 4,
                   backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
                   '& .MuiLinearProgress-bar': {
                     backgroundColor: themeColors.success,
                   },
-                }}
-              />
+                    }}
+                  />
               <Typography variant="body2" color="text.secondary" mt={1}>
                 {stats.companies_by_status.completed} of {stats.total_companies} companies fully analyzed
-              </Typography>
+                  </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -456,7 +456,7 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Relevant Articles Percentage
-              </Typography>
+                  </Typography>
               <Box display="flex" alignItems="center" mb={2}>
                 <Typography variant="h3" fontWeight="bold" color={themeColors.primary} mr={2}>
                   {stats.relevant_articles_percentage.toFixed(1)}%
@@ -466,18 +466,18 @@ const Dashboard: React.FC = () => {
               <LinearProgress
                 variant="determinate"
                 value={stats.relevant_articles_percentage}
-                sx={{
+                    sx={{
                   height: 8,
                   borderRadius: 4,
                   backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
                   '& .MuiLinearProgress-bar': {
                     backgroundColor: themeColors.primary,
                   },
-                }}
-              />
+                    }}
+                  />
               <Typography variant="body2" color="text.secondary" mt={1}>
                 Articles classified as directly relevant or indirectly useful
-              </Typography>
+                  </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -491,10 +491,10 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Companies by Status
-              </Typography>
+                  </Typography>
               <Box height={300}>
                 <Bar data={companiesStatusData} options={chartOptions} />
-              </Box>
+                </Box>
               <Box display="flex" justifyContent="space-around" mt={2}>
                 <Box textAlign="center">
                   <CheckCircleIcon sx={{ color: themeColors.success, mb: 0.5 }} />
@@ -504,15 +504,15 @@ const Dashboard: React.FC = () => {
                   <Typography variant="caption" color="text.secondary">
                     Completed
                   </Typography>
-                </Box>
+              </Box>
                 <Box textAlign="center">
                   <HourglassEmptyIcon sx={{ color: themeColors.warning, mb: 0.5 }} />
                   <Typography variant="body2" fontWeight="bold">
                     {stats.companies_by_status.loading + stats.companies_by_status.pending}
-                  </Typography>
+                </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Processing
-                  </Typography>
+                </Typography>
                 </Box>
                 <Box textAlign="center">
                   <ErrorIcon sx={{ color: themeColors.error, mb: 0.5 }} />
@@ -521,12 +521,12 @@ const Dashboard: React.FC = () => {
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Failed
-                  </Typography>
-                </Box>
+                </Typography>
               </Box>
+            </Box>
             </CardContent>
           </Card>
-        </Grid>
+          </Grid>
 
         {/* Articles by Classification */}
         <Grid item xs={12} md={6}>
@@ -534,11 +534,11 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Articles by Classification
-              </Typography>
+        </Typography>
               <Box height={300} display="flex" alignItems="center" justifyContent="center">
                 <Box width="60%">
                   <Doughnut data={articlesClassificationData} options={chartOptions} />
-                </Box>
+      </Box>
               </Box>
               <Box display="flex" justifyContent="space-around" mt={2}>
                 <Box textAlign="center">
@@ -549,8 +549,8 @@ const Dashboard: React.FC = () => {
                   />
                   <Typography variant="caption" color="text.secondary" display="block">
                     Directly Relevant
-                  </Typography>
-                </Box>
+        </Typography>
+      </Box>
                 <Box textAlign="center">
                   <Chip
                     label={stats.articles_by_classification['Indirectly Useful']}
@@ -559,18 +559,18 @@ const Dashboard: React.FC = () => {
                   />
                   <Typography variant="caption" color="text.secondary" display="block">
                     Indirectly Useful
-                  </Typography>
-                </Box>
+          </Typography>
+        </Box>
                 <Box textAlign="center">
                   <Chip
                     label={stats.articles_by_classification['Not Relevant']}
-                    size="small"
+            size="small"
                     sx={{ bgcolor: themeColors.error, color: 'white', mb: 0.5 }}
                   />
                   <Typography variant="caption" color="text.secondary" display="block">
                     Not Relevant
                   </Typography>
-                </Box>
+        </Box>
               </Box>
             </CardContent>
           </Card>
@@ -582,39 +582,39 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Campaigns by Type
-              </Typography>
+            </Typography>
               <Box height={300}>
                 <Bar data={campaignsTypeData} options={chartOptions} />
-              </Box>
+                    </Box>
               <Box display="flex" justifyContent="space-around" mt={2}>
                 <Box textAlign="center">
                   <EmailIcon sx={{ color: themeColors.primary, mb: 0.5 }} />
                   <Typography variant="body2" fontWeight="bold">
                     {stats.campaigns_by_type.email}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
                     Email
-                  </Typography>
-                </Box>
+                      </Typography>
+                    </Box>
                 <Box textAlign="center">
                   <PhoneIcon sx={{ color: themeColors.info, mb: 0.5 }} />
                   <Typography variant="body2" fontWeight="bold">
                     {stats.campaigns_by_type.call}
-                  </Typography>
+            </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Call
-                  </Typography>
-                </Box>
+            </Typography>
+                    </Box>
                 <Box textAlign="center">
                   <MeetingIcon sx={{ color: themeColors.success, mb: 0.5 }} />
                   <Typography variant="body2" fontWeight="bold">
                     {stats.campaigns_by_type.meeting}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
                     Meeting
-                  </Typography>
-                </Box>
-              </Box>
+                      </Typography>
+                    </Box>
+                  </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -625,20 +625,20 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Top Industries
-              </Typography>
+            </Typography>
               {stats.companies_by_industry.length > 0 ? (
                 <Box height={300}>
                   <Bar data={industryData} options={chartOptions} />
-                </Box>
+                    </Box>
               ) : (
                 <Box height={300} display="flex" alignItems="center" justifyContent="center">
                   <Box textAlign="center">
                     <IndustryIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
                     <Typography variant="body2" color="text.secondary">
                       No industry data available
-                    </Typography>
+                      </Typography>
+                    </Box>
                   </Box>
-                </Box>
               )}
             </CardContent>
           </Card>
@@ -653,33 +653,33 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Campaign Status
-              </Typography>
+            </Typography>
               <Box mb={2}>
                 <Box display="flex" justifyContent="space-between" mb={1}>
                   <Box display="flex" alignItems="center">
                     <ScheduleIcon sx={{ color: themeColors.warning, mr: 1 }} />
                     <Typography variant="body2">Draft</Typography>
-                  </Box>
+                    </Box>
                   <Typography variant="body2" fontWeight="bold">
                     {stats.campaigns_by_status.draft}
-                  </Typography>
-                </Box>
+                      </Typography>
+                    </Box>
                 <LinearProgress
                   variant="determinate"
                   value={(stats.campaigns_by_status.draft / stats.total_campaigns) * 100}
                   sx={{ height: 6, borderRadius: 3 }}
                 />
-              </Box>
+                  </Box>
               <Box mb={2}>
                 <Box display="flex" justifyContent="space-between" mb={1}>
                   <Box display="flex" alignItems="center">
                     <ScheduleIcon sx={{ color: themeColors.info, mr: 1 }} />
                     <Typography variant="body2">Scheduled</Typography>
-                  </Box>
+            </Box>
                   <Typography variant="body2" fontWeight="bold">
                     {stats.campaigns_by_status.scheduled}
                   </Typography>
-                </Box>
+        </Box>
                 <LinearProgress
                   variant="determinate"
                   value={(stats.campaigns_by_status.scheduled / stats.total_campaigns) * 100}
@@ -694,7 +694,7 @@ const Dashboard: React.FC = () => {
                   </Box>
                   <Typography variant="body2" fontWeight="bold">
                     {stats.campaigns_by_status.sent}
-                  </Typography>
+        </Typography>
                 </Box>
                 <LinearProgress
                   variant="determinate"
@@ -712,7 +712,7 @@ const Dashboard: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight="bold" mb={3}>
                 Recent Activity
-              </Typography>
+          </Typography>
               {activities.length > 0 ? (
                 <List>
                   {activities.slice(0, 5).map((activity, index) => (
@@ -734,17 +734,17 @@ const Dashboard: React.FC = () => {
                 </List>
               ) : (
                 <Box textAlign="center" py={4}>
-                  <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary">
                     No recent activity
-                  </Typography>
-                </Box>
+          </Typography>
+        </Box>
               )}
             </CardContent>
           </Card>
         </Grid>
       </Grid>
-    </Box>
+        </Box>
   );
 };
 
-export default Dashboard;
+export default Dashboard; 

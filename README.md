@@ -14,7 +14,6 @@
     - [Frontend Setup](#frontend-setup)
 - [Running the App](#running-the-app)
 - [Demo Video (5 Minutes)](#demo-video-5-minutes)
-- [Deployed Version](#deployed-version)
 - [Related Files](#related-files)
 - [Project Structure](#project-structure)
 - [License](#license)
@@ -91,16 +90,8 @@ npm run dev    # Local: http://localhost:3000
 
 ## Demo Video (5 Minutes)
 
-*A 5-minute demo recording is available here: [ADD YOUR VIDEO LINK HERE]*  
+*A 5-minute demo recording is available here: [[ADD YOUR VIDEO LINK HERE](https://www.youtube.com/watch?v=1FpCMQ7yAhA)]*  
 <!-- Please add a link to a Loom/YouTube or similar hosted walkthrough. -->
-
----
-
-## Deployed Version
-
-- **App Link:** [ADD YOUR PRODUCTION URL HERE]
-    - Example: `https://inspire-4.onrender.com`
-- **API Docs:** [Your deployed API /docs endpoint]
 
 ---
 
