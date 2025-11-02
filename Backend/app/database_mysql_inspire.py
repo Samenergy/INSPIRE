@@ -290,8 +290,9 @@ class InspireDatabaseService:
     
     async def update_company(self, company_id: int, sme_id: int = None, name: str = None,
                            location: str = None, description: str = None, industry: str = None,
-                           website: str = None) -> bool:
-        """Update company information"""
+                           website: str = None, company_info: str = None, strengths: str = None,
+                           opportunities: str = None) -> bool:
+        """Update company information including RAG-extracted intelligence"""
         try:
             updates = []
             params = []
@@ -319,6 +320,18 @@ class InspireDatabaseService:
             if website is not None:
                 updates.append("website = %s")
                 params.append(website)
+            
+            if company_info is not None:
+                updates.append("company_info = %s")
+                params.append(company_info)
+            
+            if strengths is not None:
+                updates.append("strengths = %s")
+                params.append(strengths)
+            
+            if opportunities is not None:
+                updates.append("opportunities = %s")
+                params.append(opportunities)
             
             if not updates:
                 return False
@@ -489,24 +502,239 @@ class InspireDatabaseService:
         }
     
     # Dashboard/Summary Operations
-    async def get_dashboard_stats(self) -> Dict[str, Any]:
-        """Get dashboard statistics"""
-        queries = {
-            'total_smes': "SELECT COUNT(*) as count FROM sme",
-            'total_companies': "SELECT COUNT(*) as count FROM company",
-            'total_recommendations': "SELECT COUNT(*) as count FROM recommendation",
-            'total_analyses': "SELECT COUNT(*) as count FROM analysis",
-            'total_articles': "SELECT COUNT(*) as count FROM article"
-        }
+    async def get_dashboard_stats(self, sme_id: Optional[int] = None) -> Dict[str, Any]:
+        """Get comprehensive dashboard statistics for SME"""
+        
+        # Base WHERE clause for filtering by SME if provided (using parameterized queries)
         
         stats = {}
-        for key, query in queries.items():
-            try:
-                result = await self.db.execute_query(query)
-                stats[key] = result[0]['count'] if result else 0
-            except Exception as e:
-                logger.error(f"Error getting {key}: {str(e)}")
-                stats[key] = 0
+        
+        try:
+            # Basic counts
+            if sme_id:
+                total_companies_result = await self.db.execute_query(
+                    "SELECT COUNT(*) as count FROM company c WHERE c.sme_id = %s", (sme_id,)
+                )
+                total_articles_result = await self.db.execute_query(
+                    "SELECT COUNT(*) as count FROM article a WHERE a.company_id IN (SELECT company_id FROM company WHERE sme_id = %s)", (sme_id,)
+                )
+                total_analyses_result = await self.db.execute_query(
+                    "SELECT COUNT(*) as count FROM analysis an WHERE an.company_id IN (SELECT company_id FROM company WHERE sme_id = %s)", (sme_id,)
+                )
+                total_campaigns_result = await self.db.execute_query(
+                    "SELECT COUNT(*) as count FROM campaign ca WHERE ca.sme_id = %s", (sme_id,)
+                )
+            else:
+                total_companies_result = await self.db.execute_query("SELECT COUNT(*) as count FROM company c")
+                total_articles_result = await self.db.execute_query("SELECT COUNT(*) as count FROM article a")
+                total_analyses_result = await self.db.execute_query("SELECT COUNT(*) as count FROM analysis an")
+                total_campaigns_result = await self.db.execute_query("SELECT COUNT(*) as count FROM campaign ca")
+            
+            stats['total_companies'] = total_companies_result[0]['count'] if total_companies_result and len(total_companies_result) > 0 else 0
+            stats['total_articles'] = total_articles_result[0]['count'] if total_articles_result and len(total_articles_result) > 0 else 0
+            stats['total_analyses'] = total_analyses_result[0]['count'] if total_analyses_result and len(total_analyses_result) > 0 else 0
+            stats['total_campaigns'] = total_campaigns_result[0]['count'] if total_campaigns_result and len(total_campaigns_result) > 0 else 0
+            
+            # Companies by status (more accurate using analysis table)
+            if sme_id:
+                companies_by_status = await self.db.execute_query("""
+                    SELECT 
+                        CASE 
+                            WHEN EXISTS (SELECT 1 FROM analysis WHERE company_id = c.company_id AND status = 'COMPLETED') THEN 'completed'
+                            WHEN EXISTS (SELECT 1 FROM analysis WHERE company_id = c.company_id AND status = 'IN_PROGRESS') THEN 'loading'
+                            WHEN EXISTS (SELECT 1 FROM analysis WHERE company_id = c.company_id AND status = 'FAILED') THEN 'failed'
+                            ELSE 'pending'
+                        END as status,
+                        COUNT(*) as count
+                    FROM company c
+                    WHERE c.sme_id = %s
+                    GROUP BY status
+                """, (sme_id,))
+            else:
+                companies_by_status = await self.db.execute_query("""
+                    SELECT 
+                        CASE 
+                            WHEN EXISTS (SELECT 1 FROM analysis WHERE company_id = c.company_id AND status = 'COMPLETED') THEN 'completed'
+                            WHEN EXISTS (SELECT 1 FROM analysis WHERE company_id = c.company_id AND status = 'IN_PROGRESS') THEN 'loading'
+                            WHEN EXISTS (SELECT 1 FROM analysis WHERE company_id = c.company_id AND status = 'FAILED') THEN 'failed'
+                            ELSE 'pending'
+                        END as status,
+                        COUNT(*) as count
+                    FROM company c
+                    GROUP BY status
+                """)
+            
+            stats['companies_by_status'] = {
+                'completed': 0,
+                'loading': 0,
+                'pending': 0,
+                'failed': 0
+            }
+            for row in companies_by_status:
+                status = row['status']
+                if status in stats['companies_by_status']:
+                    stats['companies_by_status'][status] = row['count']
+            
+            # Articles by classification
+            if sme_id:
+                articles_by_classification = await self.db.execute_query("""
+                    SELECT 
+                        classification,
+                        COUNT(*) as count
+                    FROM article a
+                    WHERE a.company_id IN (SELECT company_id FROM company WHERE sme_id = %s)
+                    GROUP BY classification
+                """, (sme_id,))
+            else:
+                articles_by_classification = await self.db.execute_query("""
+                    SELECT 
+                        classification,
+                        COUNT(*) as count
+                    FROM article a
+                    GROUP BY classification
+                """)
+            
+            stats['articles_by_classification'] = {
+                'Directly Relevant': 0,
+                'Indirectly Useful': 0,
+                'Not Relevant': 0
+            }
+            for row in articles_by_classification:
+                classification = row['classification']
+                if classification in stats['articles_by_classification']:
+                    stats['articles_by_classification'][classification] = row['count']
+            
+            # Campaigns by type
+            if sme_id:
+                campaigns_by_type = await self.db.execute_query("""
+                    SELECT 
+                        outreach_type,
+                        COUNT(*) as count
+                    FROM campaign ca
+                    WHERE ca.sme_id = %s
+                    GROUP BY outreach_type
+                """, (sme_id,))
+            else:
+                campaigns_by_type = await self.db.execute_query("""
+                    SELECT 
+                        outreach_type,
+                        COUNT(*) as count
+                    FROM campaign ca
+                    GROUP BY outreach_type
+                """)
+            
+            stats['campaigns_by_type'] = {
+                'email': 0,
+                'call': 0,
+                'meeting': 0
+            }
+            for row in campaigns_by_type:
+                outreach_type = row['outreach_type'].lower()
+                if outreach_type in stats['campaigns_by_type']:
+                    stats['campaigns_by_type'][outreach_type] = row['count']
+            
+            # Campaigns by status
+            if sme_id:
+                campaigns_by_status = await self.db.execute_query("""
+                    SELECT 
+                        status,
+                        COUNT(*) as count
+                    FROM campaign ca
+                    WHERE ca.sme_id = %s
+                    GROUP BY status
+                """, (sme_id,))
+            else:
+                campaigns_by_status = await self.db.execute_query("""
+                    SELECT 
+                        status,
+                        COUNT(*) as count
+                    FROM campaign ca
+                    GROUP BY status
+                """)
+            
+            stats['campaigns_by_status'] = {
+                'draft': 0,
+                'scheduled': 0,
+                'sent': 0
+            }
+            for row in campaigns_by_status:
+                status = row['status'].lower()
+                if status in stats['campaigns_by_status']:
+                    stats['campaigns_by_status'][status] = row['count']
+            
+            # Companies by industry
+            if sme_id:
+                companies_by_industry = await self.db.execute_query("""
+                    SELECT 
+                        COALESCE(industry, 'Unknown') as industry,
+                        COUNT(*) as count
+                    FROM company c
+                    WHERE c.sme_id = %s
+                    GROUP BY industry
+                    ORDER BY count DESC
+                    LIMIT 10
+                """, (sme_id,))
+            else:
+                companies_by_industry = await self.db.execute_query("""
+                    SELECT 
+                        COALESCE(industry, 'Unknown') as industry,
+                        COUNT(*) as count
+                    FROM company c
+                    GROUP BY industry
+                    ORDER BY count DESC
+                    LIMIT 10
+                """)
+            
+            stats['companies_by_industry'] = [
+                {'industry': row['industry'], 'count': row['count']}
+                for row in companies_by_industry
+            ]
+            
+            # Analysis completion rate
+            if sme_id:
+                total_with_analysis = await self.db.execute_query("""
+                    SELECT COUNT(DISTINCT c.company_id) as count
+                    FROM company c
+                    INNER JOIN analysis an ON c.company_id = an.company_id
+                    WHERE an.status = 'COMPLETED' AND c.sme_id = %s
+                """, (sme_id,))
+            else:
+                total_with_analysis = await self.db.execute_query("""
+                    SELECT COUNT(DISTINCT c.company_id) as count
+                    FROM company c
+                    INNER JOIN analysis an ON c.company_id = an.company_id
+                    WHERE an.status = 'COMPLETED'
+                """)
+            
+            stats['analysis_completion_rate'] = (
+                round((total_with_analysis[0]['count'] / stats['total_companies'] * 100), 2)
+                if stats['total_companies'] > 0 and total_with_analysis and total_with_analysis[0]['count'] > 0 else 0
+            )
+            
+            # Relevant articles percentage
+            total_relevant = (stats['articles_by_classification'].get('Directly Relevant', 0) + 
+                            stats['articles_by_classification'].get('Indirectly Useful', 0))
+            stats['relevant_articles_percentage'] = (
+                round((total_relevant / stats['total_articles'] * 100), 2)
+                if stats['total_articles'] > 0 else 0
+            )
+            
+        except Exception as e:
+            logger.error(f"Error getting dashboard stats: {str(e)}")
+            # Return defaults
+            stats = {
+                'total_companies': 0,
+                'total_articles': 0,
+                'total_analyses': 0,
+                'total_campaigns': 0,
+                'companies_by_status': {'completed': 0, 'loading': 0, 'pending': 0, 'failed': 0},
+                'articles_by_classification': {'Directly Relevant': 0, 'Indirectly Useful': 0, 'Not Relevant': 0},
+                'campaigns_by_type': {'email': 0, 'call': 0, 'meeting': 0},
+                'campaigns_by_status': {'draft': 0, 'scheduled': 0, 'sent': 0},
+                'companies_by_industry': [],
+                'analysis_completion_rate': 0,
+                'relevant_articles_percentage': 0
+            }
         
         return stats
     

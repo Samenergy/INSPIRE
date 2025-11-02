@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from datetime import date, datetime
 import logging
+import json
 
 from app.database_mysql_inspire import inspire_db
 from app.models import (
@@ -547,12 +548,75 @@ async def get_articles_summary_for_company(company_id: int):
         logger.error(f"Error retrieving article summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving article summary: {str(e)}")
 
-# Dashboard Endpoints
-@router.get("/dashboard/stats", response_model=INSPIREResponse[DashboardStats])
-async def get_dashboard_stats():
-    """Get dashboard statistics"""
+@router.get("/companies/{company_id}/intelligence", response_model=INSPIREResponse[dict])
+async def get_company_intelligence(company_id: int):
+    """
+    Get company intelligence information (company_info, strengths, opportunities)
+    
+    Returns RAG-extracted intelligence data including:
+    - Company Info: 5-sentence company description
+    - Strengths: Key competitive advantages
+    - Opportunities: Potential growth areas
+    """
     try:
-        stats = await inspire_db.get_dashboard_stats()
+        company = await inspire_db.get_company(company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        # Extract intelligence fields
+        company_info = company.get('company_info', '')
+        strengths = company.get('strengths', '')
+        opportunities = company.get('opportunities', '')
+        
+        # Parse JSON strings if they exist
+        company_info_data = {}
+        strengths_data = {}
+        opportunities_data = {}
+        
+        if company_info:
+            try:
+                company_info_data = json.loads(company_info) if company_info else {}
+            except (json.JSONDecodeError, TypeError):
+                company_info_data = {'raw': company_info}
+        
+        if strengths:
+            try:
+                strengths_data = json.loads(strengths) if strengths else {}
+            except (json.JSONDecodeError, TypeError):
+                strengths_data = {'raw': strengths}
+        
+        if opportunities:
+            try:
+                opportunities_data = json.loads(opportunities) if opportunities else {}
+            except (json.JSONDecodeError, TypeError):
+                opportunities_data = {'raw': opportunities}
+        
+        return INSPIREResponse(
+            success=True,
+            message="Company intelligence retrieved successfully",
+            data={
+                'company_id': company_id,
+                'company_name': company.get('name', ''),
+                'company_info': company_info_data,
+                'strengths': strengths_data,
+                'opportunities': opportunities_data,
+                'last_updated': company.get('updated_at')
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving company intelligence: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving company intelligence: {str(e)}")
+
+# Dashboard Endpoints
+@router.get("/dashboard/stats", response_model=INSPIREResponse[dict])
+async def get_dashboard_stats(
+    sme_id: Optional[int] = Query(None, description="Filter by SME ID")
+):
+    """Get comprehensive dashboard statistics"""
+    try:
+        stats = await inspire_db.get_dashboard_stats(sme_id=sme_id)
         return INSPIREResponse(
             success=True,
             message="Dashboard statistics retrieved successfully",
@@ -569,10 +633,37 @@ async def get_recent_activity(
     """Get recent activity"""
     try:
         activity = await inspire_db.get_recent_activity(limit)
+        # Convert database results to RecentActivity models, handling date conversion
+        activities = []
+        for item in activity:
+            # Ensure date is properly formatted or None
+            activity_date = None
+            if item.get('date'):
+                if isinstance(item['date'], date):
+                    activity_date = item['date']
+                elif isinstance(item['date'], datetime):
+                    activity_date = item['date'].date()
+                elif isinstance(item['date'], str):
+                    try:
+                        activity_date = datetime.fromisoformat(item['date'].replace('Z', '+00:00')).date()
+                    except:
+                        try:
+                            activity_date = datetime.strptime(item['date'], '%Y-%m-%d').date()
+                        except:
+                            activity_date = None
+            
+            activities.append(RecentActivity(
+                type=item.get('type', ''),
+                id=item.get('id', 0),
+                content=item.get('content', ''),
+                date=activity_date,
+                source=item.get('source', '')
+            ))
+        
         return INSPIREResponse(
             success=True,
             message="Recent activity retrieved successfully",
-            data=activity
+            data=activities
         )
     except Exception as e:
         logger.error(f"Error retrieving recent activity: {str(e)}")

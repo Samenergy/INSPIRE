@@ -5,8 +5,9 @@ from app.scrapers.serpapi_scraper import SerpApiScraper
 from app.models import Company
 from app.services.advanced_model_service import AdvancedModelService
 from app.services.advanced_data_processor import AdvancedDataProcessor
-from app.routers.comprehensive_analysis import get_llm_service
+from app.services.rag_analysis_service import RAGAnalysisService
 from app.database_mysql_inspire import inspire_db
+from app.config import settings
 from loguru import logger
 import pandas as pd
 import io
@@ -15,9 +16,9 @@ router = APIRouter()
 
 @router.post(
     "/unified-analysis",
-    summary="Unified Company Analysis (Scrape + Classify + Analyze)",
+    summary="Unified Company Analysis (Scrape + Classify + RAG Analysis)",
     description="""
-    **Complete one-endpoint solution for company analysis.**
+    **Complete one-endpoint solution for company analysis with RAG (Retrieval-Augmented Generation).**
     
     This endpoint orchestrates a complete analysis pipeline:
     
@@ -30,25 +31,37 @@ router = APIRouter()
     - Uses your SME objectives to determine relevance
     - Stores classified articles in the database
     
-    **3. Comprehensive Analysis (7 Questions with LLM)**
-    - Analyzes the company using all 7 comprehensive questions
-    - Uses LLM for intelligent analysis
+    **3. RAG Analysis (10 Categories)**
+    - Analyzes the company using RAG (Retrieval-Augmented Generation)
+    - Extracts 10 intelligence categories:
+      1. Latest Updates
+      2. Challenges
+      3. Decision Makers
+      4. Market Position
+      5. Future Plans
+      6. Action Plan (SME engagement steps)
+      7. Solution (SME offerings for their needs)
+      8. Company Info (5-sentence description)
+      9. Strengths (competitive advantages)
+      10. Opportunities (growth areas)
+    - Uses semantic retrieval + Llama 3.1 for extraction
     - Stores results in the database
     
     **Step-by-step process:**
     1. Scrape company data from Google (SerpAPI)
     2. Classify articles based on your SME objectives
     3. Store classified articles in the `article` table
-    4. Run comprehensive LLM analysis (7 questions)
+    4. Run RAG analysis (10 categories with vector retrieval)
     5. Store analysis results in the `analysis` table
     
     **Important:**
     - Only uses Google/SerpAPI (no LinkedIn scraping)
     - Classification happens BEFORE analysis
+    - RAG provides actionable, SME-personalized insights
     - Both articles and analysis are stored in database
     - Uses `sme_id` to link everything to your SME
     """,
-    response_description="Unified analysis completed successfully"
+    response_description="Unified analysis with RAG completed successfully"
 )
 async def unified_company_analysis(
     company_name: str = Form(..., description="Name of the company to analyze"),
@@ -232,11 +245,11 @@ async def unified_company_analysis(
         logger.info(f"✅ Stored {articles_stored} articles in database")
         
         # ============================================
-        # STEP 4: Comprehensive LLM Analysis
+        # STEP 4: RAG Analysis (10 Categories)
         # ============================================
-        logger.info("🤖 Step 4/4: Running comprehensive LLM analysis...")
+        logger.info("🤖 Step 4/4: Running RAG analysis (10 categories)...")
         
-        # Convert DataFrame to list of dicts for LLM analysis
+        # Convert DataFrame to list of dicts for RAG analysis
         articles_for_analysis = []
         for _, row in df_classified.iterrows():
             articles_for_analysis.append({
@@ -244,41 +257,118 @@ async def unified_company_analysis(
                 'content': row['content']
             })
         
-        # Initialize LLM service
-        llm_svc = get_llm_service('auto')
+        # Initialize RAG service
+        logger.info("📦 Initializing RAG service...")
+        rag_service = RAGAnalysisService(
+            milvus_host=settings.milvus_host,
+            milvus_port=settings.milvus_port,
+            ollama_host=settings.ollama_base_url,
+            llm_model=settings.ollama_model
+        )
         
-        # Run comprehensive analysis
-        analysis_results = await llm_svc.analyze_comprehensive(
+        # Run RAG analysis (comprehensive extraction of 10 categories)
+        logger.info(f"🔬 Analyzing {len(articles_for_analysis)} articles with RAG...")
+        rag_results = rag_service.analyze_comprehensive(
             articles=articles_for_analysis,
             company_name=company_name,
             sme_objective=sme_objective
         )
         
-        logger.info("✅ Comprehensive analysis completed")
+        # Extract the analysis results
+        analysis_results = rag_results['analysis']
+        rag_metadata = rag_results['metadata']
+        
+        logger.info("✅ RAG analysis completed")
+        logger.info(f"   Items extracted: {rag_metadata['total_items_extracted']}")
+        logger.info(f"   Average confidence: {rag_metadata['average_confidence']:.2%}")
+        logger.info(f"   Duration: {rag_metadata['duration_seconds']:.1f}s")
         
         # ============================================
-        # STEP 5: Store Analysis in Database
+        # STEP 5: Store RAG Analysis in Database
         # ============================================
-        logger.info("💾 Storing analysis results in database...")
+        logger.info("💾 Storing RAG analysis results in database...")
         
+        # Format RAG results for database storage
+        import json
+        
+        # Convert RAG category results to strings for database storage
+        def format_category_for_db(category_result):
+            """Format a RAG category result for database storage"""
+            if not category_result or 'data' not in category_result:
+                return ''
+            return json.dumps(category_result['data'], indent=2)
+        
+        # STEP 5A: Save Company Info, Strengths, Opportunities in COMPANY table
+        try:
+            logger.info("💾 Saving Company Info, Strengths, Opportunities to company table...")
+            
+            # Extract the three categories for company table
+            company_info_data = analysis_results.get('company_info', {})
+            strengths_data = analysis_results.get('strengths', {})
+            opportunities_data = analysis_results.get('opportunities', {})
+            
+            # Ensure we have dictionaries, not lists
+            if isinstance(company_info_data, list):
+                company_info_data = {'data': company_info_data, 'error': 'Unexpected list format'}
+            elif not isinstance(company_info_data, dict):
+                company_info_data = {}
+                
+            if isinstance(strengths_data, list):
+                strengths_data = {'data': strengths_data, 'error': 'Unexpected list format'}
+            elif not isinstance(strengths_data, dict):
+                strengths_data = {}
+                
+            if isinstance(opportunities_data, list):
+                opportunities_data = {'data': opportunities_data, 'error': 'Unexpected list format'}
+            elif not isinstance(opportunities_data, dict):
+                opportunities_data = {}
+            
+            # Format for storage
+            company_info_str = format_category_for_db(company_info_data)
+            strengths_str = format_category_for_db(strengths_data)
+            opportunities_str = format_category_for_db(opportunities_data)
+            
+            # Also extract industry from company_info if available
+            industry = None
+            if company_info_data and isinstance(company_info_data, dict) and 'data' in company_info_data:
+                data = company_info_data['data']
+                if isinstance(data, dict):
+                    industry = data.get('industry')
+            
+            # Update company record with RAG-extracted intelligence
+            await inspire_db.update_company(
+                company_id=company_id,
+                company_info=company_info_str,
+                strengths=strengths_str,
+                opportunities=opportunities_str,
+                industry=industry if industry else None
+            )
+            
+            logger.info(f"✅ Saved Company Info, Strengths, Opportunities to company table (ID: {company_id})")
+            
+        except Exception as e:
+            logger.error(f"Failed to save company intelligence: {e}")
+            # Continue anyway
+        
+        # STEP 5B: Save remaining 7 categories in ANALYSIS table
         try:
             from datetime import date
             
             analysis_id = await inspire_db.create_analysis(
                 company_id=company_id,
-                latest_updates=analysis_results.get('1_latest_updates', ''),
-                challenges=analysis_results.get('2_challenges', ''),
-                decision_makers=analysis_results.get('3_decision_makers', ''),
-                market_position=analysis_results.get('4_market_position', ''),
-                future_plans=analysis_results.get('5_future_plans', ''),
-                action_plan=analysis_results.get('6_action_plan', ''),
-                solutions=analysis_results.get('7_solutions', ''),
-                analysis_type='COMPREHENSIVE',
+                latest_updates=format_category_for_db(analysis_results.get('latest_updates')),
+                challenges=format_category_for_db(analysis_results.get('challenges')),
+                decision_makers=format_category_for_db(analysis_results.get('decision_makers')),
+                market_position=format_category_for_db(analysis_results.get('market_position')),
+                future_plans=format_category_for_db(analysis_results.get('future_plans')),
+                action_plan=format_category_for_db(analysis_results.get('action_plan')),
+                solutions=format_category_for_db(analysis_results.get('solution')),
+                analysis_type='RAG',
                 date_analyzed=date.today(),
                 status='COMPLETED'
             )
             
-            logger.info(f"✅ Stored analysis in database (ID: {analysis_id})")
+            logger.info(f"✅ Stored RAG analysis in analysis table (ID: {analysis_id})")
             
         except Exception as e:
             logger.error(f"Failed to store analysis: {e}")
@@ -309,8 +399,21 @@ async def unified_company_analysis(
                 not_relevant_articles.append(article_data)
         
         # ============================================
-        # Return Results
+        # Return Results with All Articles
         # ============================================
+        # Convert all articles to list format
+        all_articles = []
+        for idx, row in df_classified.iterrows():
+            all_articles.append({
+                'title': row.get('title', 'Untitled'),
+                'content': row.get('content', ''),
+                'url': row.get('url', ''),
+                'source': row.get('source', 'Unknown'),
+                'published_date': row.get('published_date', None),
+                'classification': row.get('prediction_label', 'Not Relevant'),
+                'confidence_score': row.get('confidence_score', 0.0)
+            })
+        
         results = {
             'company_name': company_name,
             'company_id': company_id,
@@ -321,28 +424,51 @@ async def unified_company_analysis(
                 'indirectly_useful': len(df_classified[df_classified['prediction_label'] == 'Indirectly Useful']) if 'prediction_label' in df_classified.columns else 0,
                 'not_relevant': len(df_classified[df_classified['prediction_label'] == 'Not Relevant']) if 'prediction_label' in df_classified.columns else 0
             },
-            'articles': {
+            'articles_by_classification': {
                 'directly_relevant': directly_relevant_articles,
                 'indirectly_useful': indirectly_useful_articles,
                 'not_relevant': not_relevant_articles
             },
+            'all_articles': all_articles,
             'articles_stored': articles_stored,
-            'analysis': analysis_results,
+            'rag_analysis': {
+                '1_latest_updates': analysis_results.get('latest_updates', {}),
+                '2_challenges': analysis_results.get('challenges', {}),
+                '3_decision_makers': analysis_results.get('decision_makers', {}),
+                '4_market_position': analysis_results.get('market_position', {}),
+                '5_future_plans': analysis_results.get('future_plans', {}),
+                '6_action_plan': analysis_results.get('action_plan', {}),
+                '7_solution': analysis_results.get('solution', {}),
+                '8_company_info': analysis_results.get('company_info', {}),
+                '9_strengths': analysis_results.get('strengths', {}),
+                '10_opportunities': analysis_results.get('opportunities', {})
+            },
             'classification_summary': classification_results.get('classification_summary', {}),
+            'rag_metadata': {
+                'total_items_extracted': rag_metadata['total_items_extracted'],
+                'average_confidence': rag_metadata['average_confidence'],
+                'duration_seconds': rag_metadata['duration_seconds'],
+                'articles_processed': rag_metadata['articles_processed'],
+                'chunks_created': rag_metadata['chunks_created'],
+                'vector_storage': rag_metadata['vector_storage'],
+                'hyperparameters': rag_metadata['hyperparameters']
+            },
             'metadata': {
                 'sme_objective': sme_objective,
                 'scraping_method': 'Google/SerpAPI only (no LinkedIn)',
                 'classification_method': 'ML-based with SME objectives',
-                'analysis_method': 'LLM-based comprehensive analysis',
-                'total_articles_analyzed': len(articles_for_analysis)
+                'analysis_method': 'RAG (Retrieval-Augmented Generation) with 10 categories',
+                'total_articles_analyzed': len(articles_for_analysis),
+                'llm_model': settings.ollama_model,
+                'embedding_model': 'all-MiniLM-L6-v2'
             }
         }
         
-        logger.info("✅ Unified analysis completed successfully!")
+        logger.info("✅ Unified analysis with RAG completed successfully!")
         
         return APIResponse(
             success=True,
-            message=f"Successfully completed unified analysis for {company_name}",
+            message=f"Successfully completed unified analysis with RAG for {company_name} - 10 categories extracted",
             data=results
         )
         
@@ -358,28 +484,58 @@ async def unified_company_analysis(
 @router.get(
     "/info",
     summary="Get Unified Analysis Service Information",
-    description="Get information about the unified analysis service"
+    description="Get information about the unified analysis service with RAG"
 )
 async def unified_analysis_info():
     """Get information about the unified analysis service"""
     return {
-        "service": "Unified Company Analysis",
-        "description": "Complete one-endpoint solution for company analysis",
+        "service": "Unified Company Analysis with RAG",
+        "description": "Complete one-endpoint solution for company analysis using Retrieval-Augmented Generation",
         "steps": [
             "1. Scrape company data from Google (SerpAPI)",
-            "2. Classify articles based on SME objectives",
+            "2. Classify articles based on SME objectives (ML-based)",
             "3. Store classified articles in database",
-            "4. Run comprehensive LLM analysis (7 questions)",
-            "5. Store analysis results in database"
+            "4. Run RAG analysis - 10 intelligence categories",
+            "5. Store RAG analysis results in database"
+        ],
+        "rag_categories": [
+            "1. Latest Updates - Product launches, financial results, partnerships",
+            "2. Challenges - Competitive pressures, operational difficulties",
+            "3. Decision Makers - Executives, leaders, management",
+            "4. Market Position - Competitors, market share, advantages",
+            "5. Future Plans - Expansion, investments, strategic initiatives",
+            "6. Action Plan - 3 specific steps for SME to engage",
+            "7. Solution - 3 relevant SME solutions for company needs",
+            "8. Company Info - 5-sentence company description",
+            "9. Strengths - Key competitive advantages",
+            "10. Opportunities - Potential growth areas"
         ],
         "features": [
             "Google scraping only (no LinkedIn)",
             "ML-based article classification",
-            "LLM-based comprehensive analysis",
+            "RAG-based intelligence extraction (10 categories)",
+            "Semantic retrieval with vector embeddings",
+            "LLM generation (Llama 3.1)",
+            "SME-personalized insights (Action Plan & Solution)",
             "Automatic database storage",
-            "SME-objective-based classification"
+            "Returns all articles with classifications"
         ],
+        "technology": {
+            "scraping": "SerpAPI",
+            "classification": "SentenceTransformer + Custom Model",
+            "rag_embeddings": "all-MiniLM-L6-v2 (384-dim)",
+            "vector_storage": "Milvus (with in-memory fallback)",
+            "llm": "Llama 3.1 via Ollama",
+            "retrieval": "Cosine similarity (top-5)"
+        },
         "endpoint": "/api/v1/unified/unified-analysis",
-        "method": "POST"
+        "method": "POST",
+        "response_includes": [
+            "All scraped articles (with content)",
+            "Article classifications (Directly Relevant, Indirectly Useful, Not Relevant)",
+            "10 RAG analysis categories with structured JSON",
+            "Confidence scores per category",
+            "RAG metadata (chunks, embeddings, performance)"
+        ]
     }
 

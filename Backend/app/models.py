@@ -177,6 +177,9 @@ class CompanyINSPIRE(BaseModel):
     description: Optional[str] = None
     industry: Optional[str] = None
     website: Optional[str] = None
+    company_info: Optional[str] = None  # RAG-extracted 5-sentence company description (JSON string)
+    strengths: Optional[str] = None  # RAG-extracted competitive advantages (JSON string)
+    opportunities: Optional[str] = None  # RAG-extracted growth areas (JSON string)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -308,6 +311,10 @@ class RecentActivity(BaseModel):
     content: str
     date: Optional[date] = None
     source: str
+    
+    model_config = {
+        "from_attributes": True,
+    }
 
 # Authentication Models
 class SMESignupBasic(BaseModel):
@@ -382,6 +389,7 @@ class Campaign(BaseModel):
     sent_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    company_name: Optional[str] = Field(None, description="Name of the company")
 
 class CampaignCreate(BaseModel):
     company_id: int

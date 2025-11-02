@@ -65,4 +65,18 @@ class Settings(BaseSettings):
     max_articles_per_company: int = Field(default=50, env="MAX_ARTICLES_PER_COMPANY")
     data_cleanup_days: int = Field(default=30, env="DATA_CLEANUP_DAYS")
 
+    # RAG / Milvus Configuration
+    milvus_host: str = Field(default="localhost", env="MILVUS_HOST")
+    milvus_port: str = Field(default="19530", env="MILVUS_PORT")
+    
+    # Ollama / LLM Configuration
+    ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
+    ollama_model: str = Field(default="llama3.1:latest", env="OLLAMA_MODEL")
+    
+    # RAG Hyperparameters
+    rag_temperature: float = Field(default=0.3, env="RAG_TEMPERATURE")
+    rag_top_k: int = Field(default=5, env="RAG_TOP_K")
+    rag_chunk_size: int = Field(default=500, env="RAG_CHUNK_SIZE")
+    rag_chunk_overlap: int = Field(default=100, env="RAG_CHUNK_OVERLAP")
+
 settings = Settings()

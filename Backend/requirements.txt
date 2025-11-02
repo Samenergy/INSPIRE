@@ -38,8 +38,7 @@ mypy==1.7.1
 sentence-transformers==2.2.2
 huggingface-hub==0.16.4
 scikit-learn==1.3.2
-# Hybrid Analysis Dependencies (OPTIONAL - has NumPy conflicts)
-# spacy==3.7.2  # Conflicts with scikit-learn - requires numpy>=2.0
-# transformers==4.35.2
-# torch==2.1.1
+# RAG Analysis Dependencies
+pymilvus==2.3.4  # Vector database (optional, has in-memory fallback)
+# Note: Ollama must be installed separately: curl -fsSL https://ollama.com/install.sh | sh
 

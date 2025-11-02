@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
 import os
+import re
 import aiohttp
 from ..models import OutreachType
 
@@ -23,7 +24,8 @@ class OutreachService:
         company_name: str,
         company_info: Dict[str, Any],
         sme_info: Dict[str, Any],
-        relevant_articles: List[Dict[str, Any]]
+        relevant_articles: List[Dict[str, Any]],
+        rag_analysis: Optional[Dict[str, Any]] = None
     ) -> Dict[str, str]:
         """
         Generate tailored outreach content based on company data and SME objectives.
@@ -34,6 +36,7 @@ class OutreachService:
             company_info: Company details (location, industry, description, etc.)
             sme_info: SME details (name, sector, objectives)
             relevant_articles: List of relevant articles about the company
+            rag_analysis: Optional RAG analysis data with intelligence insights
             
         Returns:
             Dict with 'title' and 'content' keys
@@ -41,7 +44,7 @@ class OutreachService:
         try:
             # Prepare context for LLM
             context = self._prepare_context(
-                company_name, company_info, sme_info, relevant_articles
+                company_name, company_info, sme_info, relevant_articles, rag_analysis
             )
             
             # Generate content based on outreach type
@@ -64,7 +67,8 @@ class OutreachService:
         company_name: str,
         company_info: Dict[str, Any],
         sme_info: Dict[str, Any],
-        relevant_articles: List[Dict[str, Any]]
+        relevant_articles: List[Dict[str, Any]],
+        rag_analysis: Optional[Dict[str, Any]] = None
     ) -> str:
         """Prepare context string for LLM prompt."""
         
@@ -78,6 +82,36 @@ COMPANY INFORMATION:
 - Website: {company_info.get('website', 'Not provided')}
 """
         
+        # Add RAG-extracted company intelligence if available
+        if company_info.get('company_info'):
+            company_info_data = company_info.get('company_info')
+            if isinstance(company_info_data, dict) and company_info_data.get('description'):
+                desc = company_info_data['description']
+                if isinstance(desc, dict):
+                    # Format 5-sentence description
+                    sentences = [desc.get(f'sentence{i}', '') for i in range(1, 6) if desc.get(f'sentence{i}')]
+                    company_context += f"- Detailed Description: {' '.join(sentences)}\n"
+                else:
+                    company_context += f"- Detailed Description: {desc}\n"
+        
+        if company_info.get('strengths'):
+            strengths = company_info.get('strengths')
+            if isinstance(strengths, dict) and strengths.get('strengths'):
+                strength_list = strengths['strengths']
+                if isinstance(strength_list, list):
+                    strength_texts = [f"  • {s.get('strength', s) if isinstance(s, dict) else s}" for s in strength_list[:3]]
+                    if strength_texts:
+                        company_context += "- Key Strengths:\n" + "\n".join(strength_texts) + "\n"
+        
+        if company_info.get('opportunities'):
+            opportunities = company_info.get('opportunities')
+            if isinstance(opportunities, dict) and opportunities.get('opportunities'):
+                opp_list = opportunities['opportunities']
+                if isinstance(opp_list, list):
+                    opp_texts = [f"  • {o.get('opportunity', o) if isinstance(o, dict) else o}" for o in opp_list[:3]]
+                    if opp_texts:
+                        company_context += "- Growth Opportunities:\n" + "\n".join(opp_texts) + "\n"
+        
         # SME information
         sme_context = f"""
 SME INFORMATION:
@@ -85,6 +119,82 @@ SME INFORMATION:
 - Sector: {sme_info.get('sector', 'Unknown')}
 - Objectives: {sme_info.get('objective', 'No specific objectives provided')}
 """
+        
+        # RAG Analysis Intelligence (if available)
+        rag_context = ""
+        if rag_analysis:
+            rag_context = "\nCOMPANY INTELLIGENCE (RAG Analysis):\n"
+            
+            # Latest Updates
+            if rag_analysis.get('latest_updates') and rag_analysis['latest_updates'].get('data', {}).get('updates'):
+                updates = rag_analysis['latest_updates']['data']['updates']
+                rag_context += "- Latest Updates:\n"
+                for update in updates[:3]:
+                    update_text = update.get('update', '') if isinstance(update, dict) else str(update)
+                    if update_text:
+                        rag_context += f"  • {update_text}\n"
+            
+            # Challenges
+            if rag_analysis.get('challenges') and rag_analysis['challenges'].get('data', {}).get('challenges'):
+                challenges = rag_analysis['challenges']['data']['challenges']
+                rag_context += "- Current Challenges:\n"
+                for challenge in challenges[:3]:
+                    challenge_text = challenge.get('challenge', '') if isinstance(challenge, dict) else str(challenge)
+                    if challenge_text:
+                        rag_context += f"  • {challenge_text}\n"
+            
+            # Decision Makers
+            if rag_analysis.get('decision_makers') and rag_analysis['decision_makers'].get('data', {}).get('decision_makers'):
+                decision_makers = rag_analysis['decision_makers']['data']['decision_makers']
+                rag_context += "- Key Decision Makers:\n"
+                for person in decision_makers[:3]:
+                    name = person.get('name', '') if isinstance(person, dict) else ''
+                    role = person.get('role', '') if isinstance(person, dict) else ''
+                    if name:
+                        rag_context += f"  • {name} ({role})\n"
+            
+            # Market Position
+            if rag_analysis.get('market_position') and rag_analysis['market_position'].get('data'):
+                mp_data = rag_analysis['market_position']['data']
+                if mp_data.get('description'):
+                    rag_context += f"- Market Position: {mp_data['description']}\n"
+                if mp_data.get('competitors'):
+                    competitors = mp_data['competitors']
+                    if isinstance(competitors, list) and competitors:
+                        rag_context += f"  - Competitors: {', '.join(competitors[:3])}\n"
+            
+            # Future Plans
+            if rag_analysis.get('future_plans') and rag_analysis['future_plans'].get('data', {}).get('plans'):
+                plans = rag_analysis['future_plans']['data']['plans']
+                rag_context += "- Future Plans:\n"
+                for plan in plans[:3]:
+                    plan_text = plan.get('plan', '') if isinstance(plan, dict) else str(plan)
+                    if plan_text:
+                        rag_context += f"  • {plan_text}\n"
+            
+            # Action Plan (SME-specific engagement steps)
+            if rag_analysis.get('action_plan') and rag_analysis['action_plan'].get('data', {}).get('action_steps'):
+                action_steps = rag_analysis['action_plan']['data']['action_steps']
+                rag_context += "\n- Recommended Engagement Steps:\n"
+                for step in action_steps[:3]:
+                    step_text = step.get('step', '') if isinstance(step, dict) else str(step)
+                    rationale = step.get('rationale', '') if isinstance(step, dict) else ''
+                    if step_text:
+                        rag_context += f"  • {step_text}\n"
+                        if rationale:
+                            rag_context += f"    Rationale: {rationale[:100]}...\n"
+            
+            # Solutions (SME solutions that address company needs)
+            if rag_analysis.get('solutions') and rag_analysis['solutions'].get('data', {}).get('solutions'):
+                solutions = rag_analysis['solutions']['data']['solutions']
+                rag_context += "\n- Relevant SME Solutions:\n"
+                for solution in solutions[:3]:
+                    solution_text = solution.get('solution', '') if isinstance(solution, dict) else str(solution)
+                    value_prop = solution.get('value_proposition', '') if isinstance(solution, dict) else ''
+                    if solution_text:
+                        rag_context += f"  • {solution_text}\n"
+                        if value_prop:
+                            rag_context += f"    Value: {value_prop[:100]}...\n"
         
         # Recent articles context
         articles_context = "RECENT COMPANY NEWS & UPDATES:\n"
@@ -100,24 +210,29 @@ SME INFORMATION:
         else:
             articles_context += "No recent articles available.\n"
         
-        return f"{company_context}\n{sme_context}\n{articles_context}"
+        return f"{company_context}\n{sme_context}{rag_context}\n{articles_context}"
     
     async def _generate_email_content(self, context: str) -> Dict[str, str]:
         """Generate email outreach content."""
         prompt = f"""
-Based on the following information, create a professional and personalized email outreach for business partnership or collaboration opportunities.
+Based on the following comprehensive intelligence about the company and SME objectives, create a highly personalized and professional email outreach for business partnership or collaboration opportunities.
 
 {context}
 
 Please generate:
-1. A compelling email subject line
+1. A compelling, personalized email subject line (under 60 characters)
 2. A professional email body that:
-   - Introduces the SME and their capabilities
-   - References specific recent company developments (from the articles)
-   - Proposes potential collaboration opportunities
-   - Includes a clear call-to-action
-   - Maintains a professional but engaging tone
-   - Is concise (under 200 words)
+   - Opens with a personalized greeting referencing a specific company update or development
+   - Introduces the SME and their capabilities relevant to the company's current priorities
+   - References specific recent company developments, challenges, or future plans from the intelligence
+   - Highlights relevant SME solutions that address the company's current needs (if available)
+   - References the recommended engagement steps (if available in the intelligence)
+   - Proposes specific collaboration opportunities based on the company's strengths and opportunities
+   - Mentions key decision makers if available (to demonstrate research)
+   - Includes a clear, action-oriented call-to-action
+   - Maintains a professional but engaging, personalized tone
+   - Is concise (150-200 words)
+   - Shows genuine understanding of the company's business context
 
 Format your response as JSON:
 {{
@@ -131,19 +246,21 @@ Format your response as JSON:
     async def _generate_call_content(self, context: str) -> Dict[str, str]:
         """Generate call script content."""
         prompt = f"""
-Based on the following information, create a professional call script for business outreach.
+Based on the following comprehensive intelligence about the company and SME objectives, create a highly personalized call script for business outreach.
 
 {context}
 
 Please generate:
-1. A brief call title/purpose
+1. A brief call title/purpose (personalized to the company)
 2. A structured call script that includes:
-   - Opening introduction (30 seconds)
-   - Company research talking points (referencing recent articles)
-   - Value proposition presentation
-   - Questions to ask the prospect
-   - Closing and next steps
-   - Objection handling tips
+   - Opening introduction (30 seconds) - personalized opener referencing a specific company update
+   - Company research talking points - reference latest updates, challenges, or future plans from intelligence
+   - Value proposition presentation - highlight relevant SME solutions that address company's current needs
+   - Decision maker engagement - mention key decision makers if available to show research
+   - Personalized questions to ask the prospect based on their challenges and opportunities
+   - Partnership opportunities discussion - reference company strengths and how SME can help
+   - Closing and next steps - use recommended engagement steps if available
+   - Objection handling tips - address common concerns based on company's market position
 
 Format your response as JSON:
 {{
@@ -157,19 +274,26 @@ Format your response as JSON:
     async def _generate_meeting_content(self, context: str) -> Dict[str, str]:
         """Generate meeting agenda content."""
         prompt = f"""
-Based on the following information, create a professional meeting agenda for business partnership discussion.
+Based on the following comprehensive intelligence about the company and SME objectives, create a professional and strategic meeting agenda for business partnership discussion.
 
 {context}
 
 Please generate:
-1. A meeting title
+1. A personalized meeting title that reflects the partnership opportunity
 2. A detailed meeting agenda that includes:
-   - Meeting objectives
-   - Agenda items with time allocations
-   - Discussion points about recent company developments
-   - Partnership opportunity exploration
-   - Action items and next steps
-   - Meeting duration estimate
+   - Meeting objectives (specific to company's current priorities and challenges)
+   - Attendee recommendations (reference key decision makers if available)
+   - Agenda items with time allocations:
+     * Company overview discussion (reference company strengths and opportunities)
+     * Recent developments review (latest updates and future plans)
+     * Challenge identification (discuss current challenges from intelligence)
+     * SME capabilities presentation (highlight relevant solutions from intelligence)
+     * Partnership opportunity exploration (based on engagement steps if available)
+     * Collaboration framework discussion
+   - Discussion points about recent company developments, challenges, and opportunities
+   - Partnership opportunity exploration based on company's future plans
+   - Action items and next steps (aligned with recommended engagement steps)
+   - Meeting duration estimate (typically 60-90 minutes)
 
 Format your response as JSON:
 {{
@@ -212,16 +336,63 @@ Format your response as JSON:
                             if start_idx != -1 and end_idx != -1:
                                 json_str = generated_text[start_idx:end_idx]
                                 parsed_content = json.loads(json_str)
+                                
+                                # Extract title and content
+                                title = parsed_content.get("title", "")
+                                content = parsed_content.get("content", generated_text)
+                                
+                                # Always extract title from content for emails
+                                if outreach_type == "email":
+                                    # Title from LLM response should be the email subject
+                                    # If it's generic, try to extract from content
+                                    title_lower = title.lower() if title else ""
+                                    is_generic = (
+                                        not title or 
+                                        'email outreach' in title_lower or 
+                                        'generated email outreach' in title_lower or 
+                                        'generated outreach' in title_lower or
+                                        title_lower == 'email outreach' or
+                                        title_lower == 'outreach'
+                                    )
+                                    
+                                    if is_generic and '"title"' in str(content):
+                                        # Try to extract subject from content JSON
+                                        match = re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"', str(content))
+                                        if match:
+                                            extracted_title = match.group(1)
+                                            # Unescape JSON string
+                                            extracted_title = extracted_title.replace('\\"', '"').replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '\r').replace('\\\\', '\\')
+                                            if extracted_title.strip() and 'email outreach' not in extracted_title.lower():
+                                                title = extracted_title.strip()
+                                        
+                                        # If still generic, try simpler regex
+                                        if not title or 'email outreach' in title.lower():
+                                            match = re.search(r'"title"\s*:\s*"([^"]+)"', str(content))
+                                            if match:
+                                                extracted_title = match.group(1).strip()
+                                                if extracted_title and 'email outreach' not in extracted_title.lower():
+                                                    title = extracted_title
+                                elif not title or (title.lower().startswith('generated') and 'outreach' in title.lower()):
+                                    title = f"{outreach_type.title()} Outreach"
+                                
                                 return {
-                                    "title": parsed_content.get("title", f"Generated {outreach_type.title()} Outreach"),
-                                    "content": parsed_content.get("content", generated_text)
+                                    "title": title,
+                                    "content": content
                                 }
                         except json.JSONDecodeError:
                             logger.warning(f"Could not parse JSON from LLM response for {outreach_type}")
                         
                         # Fallback: use the entire response as content
+                        # Try to extract subject from the text
+                        fallback_title = f"{outreach_type.title()} Outreach"
+                        if outreach_type == "email":
+                            # Try to find subject line in the text
+                            subject_match = re.search(r'(?:subject|title)[\s:]+["\']?([^"\'\n]+)["\']?', generated_text, re.IGNORECASE)
+                            if subject_match:
+                                fallback_title = subject_match.group(1).strip()
+                        
                         return {
-                            "title": f"Generated {outreach_type.title()} Outreach",
+                            "title": fallback_title,
                             "content": generated_text
                         }
                     else:

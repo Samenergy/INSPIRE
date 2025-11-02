@@ -1106,9 +1106,56 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Store analysis results
       if (result.data) {
-        const analysisData = result.data.analysis || {};
+        const ragAnalysis = result.data.rag_analysis || {};
         
-        console.log("📰 Articles received:", result.data.articles);
+        console.log("📰 Articles received:", result.data.all_articles);
+        console.log("🤖 RAG Analysis received:", ragAnalysis);
+        
+        // Extract company_info, strengths, and opportunities from RAG analysis
+        const companyInfoData = ragAnalysis["8_company_info"]?.data || {};
+        const strengthsData = ragAnalysis["9_strengths"]?.data || {};
+        const opportunitiesData = ragAnalysis["10_opportunities"]?.data || {};
+        
+        // Format company_info as a paragraph (5 sentences)
+        let companyInfoText = "";
+        if (companyInfoData.description) {
+          const sentences = [
+            companyInfoData.description.sentence1,
+            companyInfoData.description.sentence2,
+            companyInfoData.description.sentence3,
+            companyInfoData.description.sentence4,
+            companyInfoData.description.sentence5
+          ].filter(s => s && s.trim()).join(" ");
+          companyInfoText = sentences;
+        }
+        
+        // Format strengths as array of strings
+        const strengthsArray: string[] = [];
+        if (strengthsData.strengths && Array.isArray(strengthsData.strengths)) {
+          strengthsArray.push(...strengthsData.strengths.map((s: any) => {
+            const strengthText = s.strength || "";
+            const evidenceText = s.evidence ? ` (${s.evidence})` : "";
+            return `${strengthText}${evidenceText}`;
+          }));
+        }
+        
+        // Format opportunities as array of strings
+        const opportunitiesArray: string[] = [];
+        if (opportunitiesData.opportunities && Array.isArray(opportunitiesData.opportunities)) {
+          opportunitiesArray.push(...opportunitiesData.opportunities.map((o: any) => {
+            const oppText = o.opportunity || "";
+            const basisText = o.basis ? ` - ${o.basis}` : "";
+            return `${oppText}${basisText}`;
+          }));
+        }
+        
+        // Update AI description with RAG data
+        setAiDescription({
+          summary: companyInfoText || aiDescription.summary,
+          strengths: strengthsArray.length > 0 ? strengthsArray : aiDescription.strengths,
+          opportunities: opportunitiesArray.length > 0 ? opportunitiesArray : aiDescription.opportunities,
+          isLoading: false,
+        });
         
         // Store in selectedCompany for display
         setSelectedCompany({
@@ -1116,31 +1163,32 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           insights: [
             {
               question: "What are the latest company updates?",
-              points: [analysisData["1_latest_updates"] || ""]
+              points: ragAnalysis["1_latest_updates"]?.data?.updates?.map((u: any) => u.update || "") || []
             },
             {
               question: "What are the company's challenges?",
-              points: [analysisData["2_challenges"] || ""]
+              points: ragAnalysis["2_challenges"]?.data?.challenges?.map((c: any) => `${c.challenge || ""}${c.impact ? ` (Impact: ${c.impact})` : ""}`) || []
             },
             {
               question: "Who are the key decision-makers?",
-              points: [analysisData["3_decision_makers"] || ""]
+              points: ragAnalysis["3_decision_makers"]?.data?.decision_makers?.map((d: any) => `${d.name || ""} - ${d.role || ""}`) || []
             },
             {
               question: "How does the company position itself?",
-              points: [analysisData["4_market_position"] || ""]
+              points: [ragAnalysis["4_market_position"]?.data?.description || ""].filter(p => p)
             },
             {
               question: "What are the company's future plans?",
-              points: [analysisData["5_future_plans"] || ""]
+              points: ragAnalysis["5_future_plans"]?.data?.plans?.map((p: any) => `${p.plan || ""}${p.timeline ? ` (Timeline: ${p.timeline})` : ""}`) || []
             }
           ],
-          actionPlan: analysisData["6_action_plan"] || "",
-          suggestedSolutions: analysisData["7_solutions"] || "",
-          articles: result.data.articles || {}
+          actionPlan: JSON.stringify(ragAnalysis["6_action_plan"]?.data || {}),
+          suggestedSolutions: JSON.stringify(ragAnalysis["7_solution"]?.data || {}),
+          articles: result.data.articles_by_classification || result.data.all_articles || {}
         });
         
-        console.log("📰 Articles stored in selectedCompany:", result.data.articles);
+        console.log("📰 Articles stored in selectedCompany:", result.data.all_articles);
+        console.log("✅ Company Info, Strengths, Opportunities updated");
       }
 
       setNotification({
@@ -1233,6 +1281,13 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     try {
       console.log(`📊 Loading analysis and articles for company ID: ${companyId}`);
       
+      // Fetch company details (includes company_info, strengths, opportunities)
+      const companyResponse = await fetch(`http://localhost:8000/api/inspire/companies/${companyId}`, {
+        headers: {
+          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+        }
+      });
+      
       // Fetch latest analysis
       const analysisResponse = await fetch(`http://localhost:8000/api/inspire/companies/${companyId}/analysis`, {
         headers: {
@@ -1246,6 +1301,100 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
         }
       });
+
+      // Process company data (includes company_info, strengths, opportunities)
+      if (companyResponse.ok) {
+        const companyResult = await companyResponse.json();
+        if (companyResult.success && companyResult.data) {
+          const companyData = companyResult.data;
+          console.log("✅ Company data loaded:", companyData);
+          
+          // Extract and format company_info, strengths, and opportunities
+          let companyInfoText = "";
+          let strengthsArray: string[] = [];
+          let opportunitiesArray: string[] = [];
+          
+          // Parse company_info (JSON string)
+          if (companyData.company_info) {
+            try {
+              const companyInfoData = JSON.parse(companyData.company_info);
+              if (companyInfoData.description) {
+                if (typeof companyInfoData.description === 'string') {
+                  companyInfoText = companyInfoData.description;
+                } else if (companyInfoData.description.sentence1) {
+                  // Format as 5 sentences
+                  const sentences = [
+                    companyInfoData.description.sentence1,
+                    companyInfoData.description.sentence2,
+                    companyInfoData.description.sentence3,
+                    companyInfoData.description.sentence4,
+                    companyInfoData.description.sentence5
+                  ].filter(s => s && s.trim()).join(" ");
+                  companyInfoText = sentences || companyInfoText;
+                }
+              }
+            } catch (e) {
+              console.error('Error parsing company_info:', e);
+              companyInfoText = companyData.company_info;
+            }
+          }
+          
+          // Parse strengths (JSON string)
+          if (companyData.strengths) {
+            try {
+              const strengthsData = JSON.parse(companyData.strengths);
+              if (strengthsData.strengths && Array.isArray(strengthsData.strengths)) {
+                strengthsArray = strengthsData.strengths.map((s: any) => {
+                  const strengthText = s.strength || "";
+                  const evidenceText = s.evidence ? ` (${s.evidence})` : "";
+                  return `${strengthText}${evidenceText}`;
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing strengths:', e);
+              // Fallback: try to split as plain text
+              strengthsArray = companyData.strengths.split(/\n|•|\*/).filter(s => s.trim()).map(s => s.trim());
+            }
+          }
+          
+          // Parse opportunities (JSON string)
+          if (companyData.opportunities) {
+            try {
+              const opportunitiesData = JSON.parse(companyData.opportunities);
+              if (opportunitiesData.opportunities && Array.isArray(opportunitiesData.opportunities)) {
+                opportunitiesArray = opportunitiesData.opportunities.map((o: any) => {
+                  const oppText = o.opportunity || "";
+                  const basisText = o.basis ? ` - ${o.basis}` : "";
+                  return `${oppText}${basisText}`;
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing opportunities:', e);
+              // Fallback: try to split as plain text
+              opportunitiesArray = companyData.opportunities.split(/\n|•|\*/).filter(s => s.trim()).map(s => s.trim());
+            }
+          }
+          
+          // Update AI description with company data
+          // Only update if we have real data (from backend), don't fallback to dummy data
+          if (companyInfoText || strengthsArray.length > 0 || opportunitiesArray.length > 0) {
+            setAiDescription({
+              summary: companyInfoText,
+              strengths: strengthsArray.length > 0 ? strengthsArray : [],
+              opportunities: opportunitiesArray.length > 0 ? opportunitiesArray : [],
+              isLoading: false,
+            });
+          } else {
+            // No real data found, mark as not loading but keep empty
+            setAiDescription({
+              summary: "",
+              strengths: [],
+              opportunities: [],
+              isLoading: false,
+            });
+          }
+        }
+      }
 
       // Process analysis if exists
       if (analysisResponse.ok) {
@@ -1371,8 +1520,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   // Function to save new company
   const handleSaveNewCompany = async () => {
     if (!addCompanyForm.name) {
-          setNotification({
-            open: true,
+      setNotification({
+        open: true,
         message: "Company name is required",
         severity: "error",
         companyId: null,
@@ -1382,11 +1531,11 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
     try {
       setLoading(true);
-      
+
       // Get SME ID from authenticated user
       if (!user?.sme_id) {
-          setNotification({
-            open: true,
+        setNotification({
+          open: true,
           message: "Please log in to add companies",
           severity: "error",
           companyId: null,
@@ -1394,9 +1543,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         setLoading(false);
         return;
       }
-      
       const sme_id = user.sme_id;
-      
+
+      // 1. Create the company in the backend
       const response = await fetch('http://localhost:8000/api/inspire/companies', {
         method: 'POST',
         headers: {
@@ -1412,22 +1561,88 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           sme_id: sme_id
         })
       });
-
       if (!response.ok) {
         throw new Error('Failed to create company');
       }
-
-      // Close dialog and reload companies
+      const result = await response.json();
+      const newCompanyId = result.data?.company_id || result.data?.id;
+      if (!newCompanyId) {
+        throw new Error('No company ID returned from backend');
+      }
+      // Add new company to in-memory state as 'loading'
+      const newCompany = {
+        id: newCompanyId,
+        companyName: addCompanyForm.name,
+        location: addCompanyForm.location || '',
+        industry: addCompanyForm.industry || '',
+        website: addCompanyForm.website || '',
+        description: addCompanyForm.description || '',
+        updates: 'loading' as "loading",
+        assets: [],
+        activeAssets: '0',
+        productFamily: 'General',
+        exitRate: '0.00',
+        logoSrc: '/images/avatar.png',
+        color: stringToColor(addCompanyForm.name),
+      };
+      setCompanies(prev => [...prev, newCompany]);
       handleCloseAddCompany();
-      const companies = await loadCompanies();
-      setCompanies(companies);
+      setNotification({ open: true, message: "Company added. Analysis starting...", severity: "info", companyId: newCompanyId });
 
-      setNotification({
-        open: true,
-        message: "Company added successfully",
-        severity: "success",
-        companyId: null,
-      });
+      // 2. Trigger unified analysis in background (non-blocking)
+      const triggerAnalysis = async () => {
+      try {
+        const formData = new FormData();
+        formData.append('company_name', addCompanyForm.name);
+        formData.append('company_location', addCompanyForm.location);
+        formData.append('sme_id', String(sme_id));
+        formData.append('sme_objective', user.objective || '');
+        formData.append('max_articles', '100');
+          
+        const analysisResponse = await fetch('http://localhost:8000/api/v1/unified/unified-analysis', {
+          method: 'POST',
+          headers: {
+            ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+          },
+          body: formData
+        });
+          
+        if (!analysisResponse.ok) {
+          throw new Error('Analysis failed');
+        }
+          
+        const analysisData = await analysisResponse.json();
+          
+          // Update company status to completed
+        setCompanies(prev => prev.map(c => c.id === newCompanyId ? {
+          ...c,
+          updates: 'completed' as "completed",
+          analysis: analysisData.data
+        } : c));
+          
+          setNotification({ 
+            open: true, 
+            message: `Analysis completed for ${addCompanyForm.name}!`, 
+            severity: "success", 
+            companyId: newCompanyId 
+          });
+      } catch (analysisErr) {
+          console.error('Analysis error:', analysisErr);
+          setCompanies(prev => prev.map(c => c.id === newCompanyId ? { 
+            ...c, 
+            updates: 'failed' as "failed" 
+          } : c));
+          setNotification({ 
+            open: true, 
+            message: `Analysis failed for ${addCompanyForm.name}.`, 
+            severity: "error", 
+            companyId: newCompanyId 
+          });
+      }
+      };
+      
+      // Start analysis in background (non-blocking)
+      triggerAnalysis();
     } catch (error) {
       console.error('Error creating company:', error);
       setNotification({
@@ -1627,8 +1842,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         (company) => company.updates === "failed"
       );
     if (tabValue === 3)
+      // Processing includes both "loading" and "pending" statuses
       return filteredCompanies.filter(
-        (company) => company.updates === "pending"
+        (company) => company.updates === "loading" || company.updates === "pending"
       );
     return filteredCompanies;
   };
@@ -1639,8 +1855,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   const failedCount = companies.filter(
     (company) => company.updates === "failed"
   ).length;
-  const pendingCount = companies.filter(
-    (company) => company.updates === "pending"
+  const processingCount = companies.filter(
+    (company) => company.updates === "loading" || company.updates === "pending"
   ).length;
 
   const filteredByStatusCompanies = getFilteredCompaniesByStatus();
@@ -1713,14 +1929,21 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       setLoading(true);
       setSelectedCompany(company);
 
-      // Generate AI description for the selected company
-      generateAIDescription(company);
+      // Set loading state (don't generate dummy data - wait for real data)
+      setAiDescription({
+        summary: "",
+        strengths: [],
+        opportunities: [],
+        isLoading: true,
+      });
 
-      // Load existing analysis and articles from backend
+      // Load existing analysis and articles from backend (this will populate real data)
       try {
         await loadCompanyAnalysisAndArticles(company.id);
       } catch (error) {
         console.error('Error loading company data:', error);
+        // Only generate dummy data if loading fails
+        generateAIDescription(company);
       }
 
       // Delay for animation before displaying details
@@ -1878,18 +2101,58 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     setDetailTab(tab);
   };
 
-  // Function to generate AI description for an company
+  // Function to generate AI description for an company (fallback only)
+  // This should only be called when real data is not available
   const generateAIDescription = (company: Account) => {
-    // Reset previous description and set loading state
-    setAiDescription({
+    // Check if real data already exists - don't overwrite it
+    setAiDescription((prev) => {
+      // If we already have real data (non-empty summary with actual content), don't overwrite
+      if (prev.summary && prev.summary.length > 50 && !prev.isLoading) {
+        console.log('Skipping dummy data generation - real data already exists');
+        return prev;
+      }
+      
+      // Otherwise, reset and generate dummy data
+      return {
       summary: "",
       strengths: [],
       opportunities: [],
       isLoading: true,
+      };
     });
 
     // Simulate API call delay
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
+      // Check again before overwriting - real data might have loaded in the meantime
+      setAiDescription((prev) => {
+        // If real data exists now (non-empty summary that's not generic), don't overwrite with dummy data
+        // Real data is usually longer and more specific, not generic like "X is a Y company"
+        const hasRealData = prev.summary && 
+                            prev.summary.length > 100 && 
+                            !prev.summary.includes('is a') &&
+                            !prev.summary.includes('They are focused on growth') &&
+                            !prev.isLoading;
+        
+        if (hasRealData) {
+          console.log('Skipping dummy data - real data loaded during timeout');
+          return prev;
+        }
+        
+        // Also check if we have real strengths/opportunities (non-generic)
+        const hasRealStrengths = prev.strengths && 
+                                 prev.strengths.length > 0 && 
+                                 !prev.strengths[0].includes('Strong presence in the') &&
+                                 !prev.strengths[0].includes('Established operations');
+        
+        const hasRealOpportunities = prev.opportunities && 
+                                     prev.opportunities.length > 0 && 
+                                     !prev.opportunities[0].includes('Explore new market opportunities');
+        
+        if (hasRealStrengths || hasRealOpportunities) {
+          console.log('Skipping dummy data - real data detected');
+          return prev;
+        }
+        
       // Generate description based on company data
       const industry = company.industry;
       const location = company.location;
@@ -1913,12 +2176,13 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         `Expand operations and market reach`,
       ];
 
-      // Update state with generated description
-      setAiDescription({
+        // Only update if we don't have real data
+        return {
         summary,
         strengths,
         opportunities,
         isLoading: false,
+        };
       });
     }, 1500); // Simulate 1.5 second delay for API call
   };
@@ -3175,21 +3439,238 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                     </Box>
                     <Collapse in={expandedInsights.includes(index)}>
                       <Box sx={{ px: 2, pb: 2 }}>
-                        <List dense sx={{ pl: 2, mt: 0 }}>
-                          {insight.points.map((point, i) => (
-                              <ListItem
-                                key={i}
-                                sx={{
-                                  display: "list-item",
-                                  listStyleType: "disc",
-                                  pl: 0,
-                                  py: 0.5,
-                                }}
-                              >
-                                <Typography variant="body2">{point}</Typography>
-                            </ListItem>
-                          ))}
-                        </List>
+                        {(() => {
+                          // Parse JSON strings from points
+                          const formattedPoints: string[] = [];
+                          
+                          insight.points.forEach((point) => {
+                            if (!point || (typeof point === 'string' && point.trim() === '')) return;
+                            
+                            // Format based on question type (case-insensitive check)
+                            const questionLower = insight.question.toLowerCase();
+                            
+                            // Handle "latest updates" question specifically - match any variation
+                            if (questionLower.includes('latest update') || questionLower.includes('latest company update')) {
+                              // Always try to extract using regex first for latest updates - this is most reliable
+                              if (typeof point === 'string' && point.trim().length > 0) {
+                                const trimmedPoint = point.trim();
+                                
+                                // Try multiple regex patterns to ensure we catch all cases
+                                // Pattern 1: Match "update": "text" with proper escaping (handles escaped quotes)
+                                let updatePattern = /"update"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+                                let match;
+                                let foundUpdates: string[] = [];
+                                
+                                updatePattern.lastIndex = 0;
+                                while ((match = updatePattern.exec(trimmedPoint)) !== null) {
+                                  if (match[1]) {
+                                    const unescaped = match[1]
+                                      .replace(/\\"/g, '"')
+                                      .replace(/\\n/g, '\n')
+                                      .replace(/\\t/g, '\t')
+                                      .replace(/\\r/g, '\r')
+                                      .replace(/\\\\/g, '\\');
+                                    if (unescaped.trim().length > 0) {
+                                      foundUpdates.push(unescaped.trim());
+                                    }
+                                  }
+                                }
+                                
+                                // Pattern 2: Simpler pattern - match text between quotes after "update":
+                                // This pattern matches: "update": "text" where text can contain escaped quotes
+                                if (foundUpdates.length === 0) {
+                                  updatePattern = /"update"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+                                  updatePattern.lastIndex = 0;
+                                  while ((match = updatePattern.exec(trimmedPoint)) !== null) {
+                                    if (match[1]) {
+                                      const unescaped = match[1]
+                                        .replace(/\\"/g, '"')
+                                        .replace(/\\n/g, '\n')
+                                        .replace(/\\t/g, '\t')
+                                        .replace(/\\r/g, '\r')
+                                        .replace(/\\\\/g, '\\');
+                                      if (unescaped.trim().length > 0) {
+                                        foundUpdates.push(unescaped.trim());
+                                      }
+                                    }
+                                  }
+                                }
+                                
+                                // Pattern 3: Even simpler - match any text between quotes (non-greedy)
+                                if (foundUpdates.length === 0) {
+                                  // Try to match: "update": "anything here" with non-greedy matching
+                                  const simplePattern = /"update"\s*:\s*"((?:(?!",).)+?)"/g;
+                                  simplePattern.lastIndex = 0;
+                                  while ((match = simplePattern.exec(trimmedPoint)) !== null) {
+                                    if (match[1] && match[1].trim().length > 0) {
+                                      foundUpdates.push(match[1].trim());
+                                    }
+                                  }
+                                }
+                                
+                                if (foundUpdates.length > 0) {
+                                  foundUpdates.forEach(update => {
+                                    if (update && update.trim().length > 0) {
+                                      formattedPoints.push(update.trim());
+                                    }
+                                  });
+                                  // Return early if we found updates via regex
+                                  return;
+                                }
+                                
+                                // If regex didn't work, try JSON parsing as fallback
+                                try {
+                                  const parsed = JSON.parse(trimmedPoint);
+                                  if (parsed && parsed.updates && Array.isArray(parsed.updates)) {
+                                    parsed.updates.forEach((update: any) => {
+                                      if (update && typeof update === 'object' && update.update) {
+                                        formattedPoints.push(String(update.update).trim());
+                                      }
+                                    });
+                                    if (formattedPoints.length > 0) return;
+                                  }
+                                } catch (e) {
+                                  // JSON parse failed, continue
+                                }
+                                
+                                // If nothing worked, don't show raw JSON
+                                return;
+                              } else if (typeof point === 'object' && point !== null) {
+                                // Already an object, try to extract directly
+                                if (point.updates && Array.isArray(point.updates)) {
+                                  point.updates.forEach((update: any) => {
+                                    if (update && typeof update === 'object' && update.update) {
+                                      formattedPoints.push(String(update.update).trim());
+                                    }
+                                  });
+                                  if (formattedPoints.length > 0) return;
+                                }
+                                // Try nested structure
+                                if (point.data && point.data.updates && Array.isArray(point.data.updates)) {
+                                  point.data.updates.forEach((update: any) => {
+                                    if (update && typeof update === 'object' && update.update) {
+                                      formattedPoints.push(String(update.update).trim());
+                                    }
+                                  });
+                                  if (formattedPoints.length > 0) return;
+                                }
+                              }
+                              
+                              // If all else fails, don't show raw JSON - just return without adding anything
+                              // This prevents raw JSON from being displayed
+                              return;
+                            }
+                            
+                            // Handle other question types
+                            try {
+                              // Try to parse as JSON (handle both string and already parsed objects)
+                              let parsed;
+                              if (typeof point === 'string') {
+                                // Check if it looks like JSON (starts with { or [)
+                                const trimmedPoint = point.trim();
+                                if (trimmedPoint.startsWith('{') || trimmedPoint.startsWith('[')) {
+                                  try {
+                                    parsed = JSON.parse(trimmedPoint);
+                                  } catch (e) {
+                                    // JSON parsing failed, use as plain text
+                                    formattedPoints.push(point);
+                                    return;
+                                  }
+                                } else {
+                                  // Not JSON format, use as plain text
+                                  formattedPoints.push(point);
+                                  return;
+                                }
+                              } else {
+                                parsed = point;
+                              }
+                              
+                              // Process other question types (challenges, decision-makers, etc.)
+                              if (questionLower.includes('challenge')) {
+                                // Extract challenges
+                                if (parsed.challenges && Array.isArray(parsed.challenges)) {
+                                  parsed.challenges.forEach((challenge: any) => {
+                                    const challengeText = challenge.challenge || String(challenge);
+                                    const impact = challenge.impact ? ` (Impact: ${challenge.impact})` : '';
+                                    formattedPoints.push(`${challengeText}${impact}`);
+                                  });
+                                } else {
+                                  formattedPoints.push(String(point));
+                                }
+                              } else if (questionLower.includes('decision-maker') || questionLower.includes('decision maker')) {
+                                // Extract decision makers
+                                if (parsed && parsed.decision_makers && Array.isArray(parsed.decision_makers)) {
+                                  parsed.decision_makers.forEach((person: any) => {
+                                    const name = person.name || '';
+                                    const role = person.role ? ` - ${person.role}` : '';
+                                    formattedPoints.push(`${name}${role}`);
+                                  });
+                                } else {
+                                  formattedPoints.push(String(point));
+                                }
+                              } else if (questionLower.includes('position')) {
+                                // Extract market position
+                                if (parsed && parsed.description) {
+                                  formattedPoints.push(parsed.description);
+                                }
+                                if (parsed && parsed.competitors && Array.isArray(parsed.competitors) && parsed.competitors.length > 0) {
+                                  formattedPoints.push(`Competitors: ${parsed.competitors.join(', ')}`);
+                                }
+                                if (parsed && parsed.market_share) {
+                                  formattedPoints.push(`Market Share: ${parsed.market_share}`);
+                                }
+                                if (formattedPoints.length === 0 && point) {
+                                  formattedPoints.push(String(point));
+                                }
+                              } else if (questionLower.includes('future plan')) {
+                                // Extract future plans
+                                if (parsed && parsed.plans && Array.isArray(parsed.plans)) {
+                                  parsed.plans.forEach((plan: any) => {
+                                    const planText = plan.plan || String(plan);
+                                    const timeline = plan.timeline ? ` (Timeline: ${plan.timeline})` : '';
+                                    formattedPoints.push(`${planText}${timeline}`);
+                                  });
+                                } else {
+                                  formattedPoints.push(String(point));
+                                }
+                              } else {
+                                // Fallback: use point as-is
+                                formattedPoints.push(String(point));
+                              }
+                            } catch (e) {
+                              // Not JSON, use as plain text
+                              console.error('Error parsing insight point:', e, point);
+                              formattedPoints.push(String(point));
+                            }
+                          });
+                          
+                          // Display as bullet points
+                          if (formattedPoints.length === 0) {
+                            return (
+                              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                No information available
+                              </Typography>
+                            );
+                          }
+                          
+                          return (
+                            <List dense sx={{ pl: 2, mt: 0 }}>
+                              {formattedPoints.map((point, i) => (
+                                <ListItem
+                                  key={i}
+                                  sx={{
+                                    display: "list-item",
+                                    listStyleType: "disc",
+                                    pl: 0,
+                                    py: 0.5,
+                                  }}
+                                >
+                                  <Typography variant="body2">{point}</Typography>
+                                </ListItem>
+                              ))}
+                            </List>
+                          );
+                        })()}
                       </Box>
                     </Collapse>
                   </Paper>
@@ -3214,6 +3695,109 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 </Typography>
 
                 {selectedCompany.suggestedSolutions ? (
+                  (() => {
+                    try {
+                      const solutionsData = typeof selectedCompany.suggestedSolutions === 'string' 
+                        ? JSON.parse(selectedCompany.suggestedSolutions) 
+                        : selectedCompany.suggestedSolutions;
+                      
+                      const solutions = solutionsData?.solutions || [];
+                      
+                      if (solutions.length === 0) {
+                        return (
+                          <Typography variant="body2" color="text.secondary">
+                            No solutions available.
+                          </Typography>
+                        );
+                      }
+                      
+                      return (
+                        <Box>
+                          {solutions.map((solution: any, index: number) => (
+                            <Paper
+                              key={index}
+                              elevation={0}
+                              sx={{
+                                mb: 2,
+                                p: 2.5,
+                                borderRadius: (theme) => theme.shape.borderRadius,
+                                border: "1px solid #e0e0e0",
+                                bgcolor: appTheme === 'dark' ? 'rgba(255, 255, 255, 0.02)' : '#fff',
+                                transition: "all 0.2s ease-in-out",
+                                "&:hover": {
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                                  borderColor: "#1976d2",
+                                },
+                              }}
+                            >
+                              <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 1.5 }}>
+                                <Box sx={{ display: "flex", alignItems: "center" }}>
+                                  <Box
+                                    component="span"
+                                    sx={{
+                                      display: "inline-block",
+                                      width: 10,
+                                      height: 10,
+                                      bgcolor: "#1976d2",
+                                      borderRadius: "50%",
+                                      mr: 1.5,
+                                      mt: 0.7,
+                                    }}
+                                  />
+                                  <Typography
+                                    variant="body1"
+                                    fontWeight={600}
+                                  >
+                                    {solution.solution || 'Solution'}
+                                  </Typography>
+                                </Box>
+                                <Chip
+                                  label={solution.relevance?.toUpperCase() || 'MEDIUM'}
+                                  size="small"
+                                  sx={{
+                                    fontWeight: 600,
+                                    bgcolor:
+                                      solution.relevance === 'high' ? '#e8f5e9' :
+                                      solution.relevance === 'medium' ? '#fff3e0' :
+                                      '#f3e5f5',
+                                    color:
+                                      solution.relevance === 'high' ? '#2e7d32' :
+                                      solution.relevance === 'medium' ? '#e65100' :
+                                      '#7b1fa2',
+                                  }}
+                                />
+                              </Box>
+                              
+                              {solution.value_proposition && (
+                                <Box
+                                  sx={{
+                                    pl: 2.5,
+                                    borderLeft: '2px solid #1976d2',
+                                    mt: 1.5,
+                                  }}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ display: "block", mb: 0.5, fontWeight: 600 }}
+                                  >
+                                    Value Proposition:
+                                  </Typography>
+                                  <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                    sx={{ lineHeight: 1.7 }}
+                                  >
+                                    {solution.value_proposition}
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Paper>
+                          ))}
+                        </Box>
+                      );
+                    } catch (error) {
+                      return (
                   <Typography
                     variant="body2"
                     sx={{ 
@@ -3224,6 +3808,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                   >
                     {selectedCompany.suggestedSolutions}
                   </Typography>
+                      );
+                    }
+                  })()
                 ) : (
                   mockSolutions.map((solution, index) => (
                   <Paper
@@ -3312,6 +3899,109 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               
               <Box sx={{ p: 3 }}>
                 {selectedCompany.actionPlan ? (
+                  (() => {
+                    try {
+                      const actionPlanData = typeof selectedCompany.actionPlan === 'string' 
+                        ? JSON.parse(selectedCompany.actionPlan) 
+                        : selectedCompany.actionPlan;
+                      
+                      const actionSteps = actionPlanData?.action_steps || [];
+                      
+                      if (actionSteps.length === 0) {
+                        return (
+                          <Typography variant="body2" color="text.secondary">
+                            No action plan available.
+                          </Typography>
+                        );
+                      }
+                      
+                      return (
+                        <Box>
+                          {actionSteps.map((step: any, index: number) => (
+                            <Paper
+                              key={index}
+                              elevation={0}
+                              sx={{
+                                mb: 2,
+                                p: 2.5,
+                                borderRadius: (theme) => theme.shape.borderRadius,
+                                borderLeft: `4px solid ${
+                                  step.priority === 'high' ? '#d32f2f' :
+                                  step.priority === 'medium' ? '#ed6c02' :
+                                  '#1976d2'
+                                }`,
+                                bgcolor: appTheme === 'dark' ? 'rgba(255, 255, 255, 0.02)' : '#fff',
+                                transition: "all 0.2s ease-in-out",
+                                "&:hover": {
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                                },
+                              }}
+                            >
+                              <Box sx={{ display: "flex", alignItems: "flex-start", mb: 1.5 }}>
+                                <Chip
+                                  label={`Step ${index + 1}`}
+                                  size="small"
+                                  sx={{
+                                    mr: 1.5,
+                                    fontWeight: 600,
+                                    bgcolor: appTheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#f5f5f5',
+                                  }}
+                                />
+                                <Chip
+                                  label={step.priority?.toUpperCase() || 'MEDIUM'}
+                                  size="small"
+                                  sx={{
+                                    fontWeight: 600,
+                                    bgcolor:
+                                      step.priority === 'high' ? '#ffebee' :
+                                      step.priority === 'medium' ? '#fff3e0' :
+                                      '#e3f2fd',
+                                    color:
+                                      step.priority === 'high' ? '#c62828' :
+                                      step.priority === 'medium' ? '#e65100' :
+                                      '#1565c0',
+                                  }}
+                                />
+                              </Box>
+                              
+                              <Typography
+                                variant="body1"
+                                fontWeight={600}
+                                sx={{ mb: 1.5, lineHeight: 1.6 }}
+                              >
+                                {step.step || 'Action step'}
+                              </Typography>
+                              
+                              {step.rationale && (
+                                <Box
+                                  sx={{
+                                    pl: 2,
+                                    borderLeft: '2px solid #e0e0e0',
+                                    mt: 1.5,
+                                  }}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ display: "block", mb: 0.5, fontWeight: 600 }}
+                                  >
+                                    Rationale:
+                                  </Typography>
+                                  <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                    sx={{ lineHeight: 1.7 }}
+                                  >
+                                    {step.rationale}
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Paper>
+                          ))}
+                        </Box>
+                      );
+                    } catch (error) {
+                      return (
                   <Typography
                     variant="body2"
                     sx={{ 
@@ -3322,6 +4012,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                   >
                     {selectedCompany.actionPlan}
                   </Typography>
+                      );
+                    }
+                  })()
                 ) : (
                   <>
                 <Alert 
@@ -4162,7 +4855,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       <StyledTab 
                         label={
                         <Box sx={{ display: "flex", alignItems: "center" }}>
-                            Pending <TabCount>{pendingCount}</TabCount>
+                            Processing <TabCount>{processingCount}</TabCount>
                           </Box>
                         } 
                       />
@@ -4434,7 +5127,22 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                                 </TableContent>
                                 <TableContent sx={{ pr: 3, py: 1 }}>
                                     {company.updates === "loading" ? (
-                                      <StatusLabel status={company.updates}>
+                                      <StatusLabel 
+                                        status={company.updates}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          // Filter by processing (loading + pending)
+                                          setTabValue(3);
+                                        }}
+                                        sx={{
+                                          cursor: 'pointer',
+                                          '&:hover': {
+                                            opacity: 0.8,
+                                            transform: 'scale(1.05)',
+                                          },
+                                          transition: 'all 0.2s ease',
+                                        }}
+                                      >
                                         <CircularProgress
                                           size={12}
                                           thickness={4}
@@ -4443,14 +5151,39 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                                       Processing
                                     </StatusLabel>
                                   ) : (
-                                      <StatusLabel status={company.updates}>
+                                      <StatusLabel 
+                                        status={company.updates}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          // Filter by status
+                                          if (company.updates === "completed") {
+                                            setTabValue(1);
+                                          } else if (company.updates === "failed") {
+                                            setTabValue(2);
+                                          } else if (company.updates === "pending" || company.updates === "loading") {
+                                            setTabValue(3);
+                                          }
+                                        }}
+                                        sx={{
+                                          cursor: 'pointer',
+                                          '&:hover': {
+                                            opacity: 0.8,
+                                            transform: 'scale(1.05)',
+                                          },
+                                          transition: 'all 0.2s ease',
+                                        }}
+                                      >
                                         <StatusIndicator
                                           status={company.updates}
                                         />
                                         {company.updates === "completed"
                                           ? "Analysis Complete"
                                           : company.updates === "failed"
-                                          ? "No Results Found"
+                                          ? "Analysis Failed"
+                                          : company.updates === "loading"
+                                          ? "Processing"
+                                          : company.updates === "pending"
+                                          ? "Pending"
                                           : company.updates
                                               .charAt(0)
                                               .toUpperCase() +

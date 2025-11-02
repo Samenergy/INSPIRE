@@ -28,6 +28,7 @@ import { BORDER_RADIUS, TRANSITIONS } from '../ui/common/constants';
 import { Dialog } from '../ui/common/Dialog';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PendingIcon from '@mui/icons-material/Pending';
+import BusinessIcon from '@mui/icons-material/Business';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 
@@ -465,9 +466,6 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
               <Typography variant="body2">Recent Campaigns</Typography>
             </MenuItem>
             <MenuItem onClick={handleFilterClose}>
-              <Typography variant="body2">AI Generated</Typography>
-            </MenuItem>
-            <MenuItem onClick={handleFilterClose}>
               <Typography variant="body2">Shared with Me</Typography>
             </MenuItem>
           </Menu>
@@ -497,7 +495,78 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                 </Typography>
               </Box>
             ) : (
-              filteredCampaigns.map(campaign => (
+              filteredCampaigns.map(campaign => {
+                // Extract subject from content for email campaigns
+                let displayTitle = campaign.title;
+                
+                // For email campaigns, always try to extract subject from content
+                if (campaign.outreach_type === 'email') {
+                  try {
+                    const content = campaign.content.trim();
+                    let extractedSubject = null;
+                    
+                    // Method 1: Try JSON parsing if content is JSON
+                    if (content.startsWith('{')) {
+                      try {
+                        const parsed = JSON.parse(content);
+                        if (parsed.title && parsed.title.trim()) {
+                          extractedSubject = parsed.title.trim();
+                        }
+                      } catch (e) {
+                        // JSON parse failed, try regex
+                      }
+                    }
+                    
+                    // Method 2: Try regex extraction for "title": "subject" with escaping
+                    if (!extractedSubject) {
+                      const titleMatch = content.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                      if (titleMatch && titleMatch[1]) {
+                        // Unescape JSON string
+                        extractedSubject = titleMatch[1]
+                          .replace(/\\"/g, '"')
+                          .replace(/\\n/g, '\n')
+                          .replace(/\\t/g, '\t')
+                          .replace(/\\r/g, '\r')
+                          .replace(/\\\\/g, '\\')
+                          .trim();
+                      }
+                    }
+                    
+                    // Method 3: Try simpler regex for basic cases
+                    if (!extractedSubject) {
+                      const simpleMatch = content.match(/"title"\s*:\s*"([^"]+)"/);
+                      if (simpleMatch && simpleMatch[1]) {
+                        extractedSubject = simpleMatch[1].trim();
+                      }
+                    }
+                    
+                    // Use extracted subject if found and it's not generic
+                    if (extractedSubject && extractedSubject.length > 0) {
+                      const subjectLower = extractedSubject.toLowerCase();
+                      if (!subjectLower.includes('email outreach') && 
+                          !subjectLower.includes('generated') &&
+                          subjectLower !== 'email outreach' &&
+                          subjectLower !== 'outreach') {
+                        displayTitle = extractedSubject;
+                      } else {
+                        // Extracted subject is generic, check if current title is worse
+                        const titleLower = campaign.title.toLowerCase();
+                        if ((titleLower.includes('email outreach') || 
+                             titleLower === 'email outreach' ||
+                             titleLower === 'outreach') &&
+                            extractedSubject !== campaign.title) {
+                          // Both are generic, but use extracted anyway if different
+                          displayTitle = extractedSubject;
+                        }
+                      }
+                    }
+                  } catch (e) {
+                    // Keep original title if extraction fails
+                    console.warn('Failed to extract subject from campaign:', e);
+                  }
+                }
+                
+                return (
                 <ListItemStyled
                   key={campaign.campaign_id}
                   selected={selectedCampaignId === campaign.campaign_id}
@@ -507,20 +576,25 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                   <ListItemText
                     primary={
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-                        <Typography variant="subtitle1" fontWeight="bold" noWrap sx={{ maxWidth: '200px' }}>
-                          {campaign.title}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle1" fontWeight="bold" noWrap sx={{ mb: 0.5 }}>
+                            {displayTitle}
+                          </Typography>
+                          {campaign.company_name && (
+                            <Typography variant="body2" color="primary" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <BusinessIcon sx={{ fontSize: '0.875rem' }} />
+                              {campaign.company_name}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
                           {new Date(campaign.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </Typography>
                       </Box>
                     }
                     secondary={
                       <Box>
-                        <Typography variant="body2" color="text.secondary" noWrap sx={{ mb: 0.5 }}>
-                          {campaign.company_name ? `For ${campaign.company_name}` : 'Generated outreach content'}
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                           <TypeBadge type={campaign.outreach_type} label={campaign.outreach_type.toUpperCase()} />
                           <Chip
                             label={campaign.status.toUpperCase()}
@@ -540,7 +614,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                     }
                   />
                 </ListItemStyled>
-              ))
+              )})
             )}
           </List>
         </Box>
@@ -559,11 +633,82 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
               <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                   <Box>
-                    <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
-                      {selectedCampaign.title}
-                    </Typography>
+                    {(() => {
+                      // Extract subject from content for email campaigns
+                      let displayTitle = selectedCampaign.title;
+                      
+                      // For email campaigns, always try to extract subject from content
+                      if (selectedCampaign.outreach_type === 'email') {
+                        try {
+                          const content = selectedCampaign.content.trim();
+                          let extractedSubject = null;
+                          
+                          // Method 1: Try JSON parsing
+                          if (content.startsWith('{')) {
+                            try {
+                              const parsed = JSON.parse(content);
+                              if (parsed.title && parsed.title.trim()) {
+                                extractedSubject = parsed.title.trim();
+                              }
+                            } catch (e) {
+                              // Try regex
+                            }
+                          }
+                          
+                          // Method 2: Try regex extraction with escaping
+                          if (!extractedSubject) {
+                            const titleMatch = content.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                            if (titleMatch && titleMatch[1]) {
+                              extractedSubject = titleMatch[1]
+                                .replace(/\\"/g, '"')
+                                .replace(/\\n/g, '\n')
+                                .replace(/\\t/g, '\t')
+                                .replace(/\\r/g, '\r')
+                                .replace(/\\\\/g, '\\')
+                                .trim();
+                            }
+                          }
+                          
+                          // Method 3: Try simpler regex
+                          if (!extractedSubject) {
+                            const simpleMatch = content.match(/"title"\s*:\s*"([^"]+)"/);
+                            if (simpleMatch && simpleMatch[1]) {
+                              extractedSubject = simpleMatch[1].trim();
+                            }
+                          }
+                          
+                          // Use extracted subject if found and it's not generic
+                          if (extractedSubject && extractedSubject.length > 0) {
+                            const subjectLower = extractedSubject.toLowerCase();
+                            if (!subjectLower.includes('email outreach') && 
+                                !subjectLower.includes('generated') &&
+                                subjectLower !== 'email outreach' &&
+                                subjectLower !== 'outreach') {
+                              displayTitle = extractedSubject;
+                            } else {
+                              // Extracted is generic, check if current title is worse
+                              const titleLower = selectedCampaign.title.toLowerCase();
+                              if ((titleLower.includes('email outreach') || 
+                                   titleLower === 'email outreach' ||
+                                   titleLower === 'outreach') &&
+                                  extractedSubject !== selectedCampaign.title) {
+                                displayTitle = extractedSubject;
+                              }
+                            }
+                          }
+                        } catch (e) {
+                          console.warn('Failed to extract subject from campaign:', e);
+                        }
+                      }
+                      
+                      return (
+                        <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
+                          {displayTitle}
+                        </Typography>
+                      );
+                    })()}
                     <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                      {selectedCampaign.company_name ? `Generated for ${selectedCampaign.company_name}` : 'AI-generated outreach content'}
+                      {selectedCampaign.company_name ? `Generated for ${selectedCampaign.company_name}` : 'Outreach content'}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       <TypeBadge type={selectedCampaign.outreach_type} label={selectedCampaign.outreach_type.toUpperCase()} size="medium" />
@@ -577,18 +722,6 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                           }
                         }}
                       />
-                        <Chip
-                          icon={<SmartToyIcon size={16} />}
-                          label="AI Generated"
-                          sx={{
-                            backgroundColor: mode === 'dark' ? 'rgba(138, 43, 226, 0.2)' : 'rgba(138, 43, 226, 0.1)',
-                            color: '#8a2be2',
-                            transition: 'transform 0.2s ease',
-                            '&:hover': {
-                              transform: 'scale(1.05)'
-                            }
-                          }}
-                        />
                     </Box>
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1 }}>
@@ -683,20 +816,135 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                     }}
                   />
                 ) : (
-                  <Typography
-                    variant="body1"
-                    component="div"
+                  <Box
                     sx={{
-                      whiteSpace: 'pre-wrap',
                       backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.01)',
-                      p: 3,
+                      p: 4,
                       borderRadius: BORDER_RADIUS.md,
                       border: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
-                      minHeight: '300px'
+                      minHeight: '300px',
+                      fontFamily: selectedCampaign.outreach_type === 'email' ? '"Roboto", "Helvetica", "Arial", sans-serif' : 'inherit',
                     }}
                   >
-                    {selectedCampaign.content}
-                  </Typography>
+                    {(() => {
+                      // Parse and format campaign content
+                      let formattedContent = selectedCampaign.content;
+                      
+                      try {
+                        // Check if content is JSON or contains JSON
+                        const trimmedContent = selectedCampaign.content.trim();
+                        
+                        // Try to extract JSON from content
+                        let jsonMatch = null;
+                        if (trimmedContent.startsWith('{') || trimmedContent.includes('{')) {
+                          // Try to find JSON object
+                          const jsonStart = trimmedContent.indexOf('{');
+                          const jsonEnd = trimmedContent.lastIndexOf('}') + 1;
+                          if (jsonStart !== -1 && jsonEnd > jsonStart) {
+                            const jsonStr = trimmedContent.substring(jsonStart, jsonEnd);
+                            try {
+                              const parsed = JSON.parse(jsonStr);
+                              // If it has title and content, use those
+                              if (parsed.title && parsed.content) {
+                                formattedContent = `Subject: ${parsed.title}\n\n${parsed.content}`;
+                              } else if (parsed.content) {
+                                formattedContent = parsed.content;
+                              }
+                            } catch (e) {
+                              // JSON parsing failed, try regex extraction
+                              const titleMatch = trimmedContent.match(/"title"\s*:\s*"([^"]+)"/);
+                              const contentMatch = trimmedContent.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                              
+                              if (titleMatch && contentMatch) {
+                                const title = titleMatch[1];
+                                let content = contentMatch[1];
+                                // Unescape JSON string
+                                content = content
+                                  .replace(/\\"/g, '"')
+                                  .replace(/\\n/g, '\n')
+                                  .replace(/\\t/g, '\t')
+                                  .replace(/\\r/g, '\r')
+                                  .replace(/\\\\/g, '\\');
+                                formattedContent = `Subject: ${title}\n\n${content}`;
+                              } else if (contentMatch) {
+                                let content = contentMatch[1];
+                                content = content
+                                  .replace(/\\"/g, '"')
+                                  .replace(/\\n/g, '\n')
+                                  .replace(/\\t/g, '\t')
+                                  .replace(/\\r/g, '\r')
+                                  .replace(/\\\\/g, '\\');
+                                formattedContent = content;
+                              }
+                            }
+                          }
+                        }
+                      } catch (e) {
+                        // Parsing failed, use content as-is
+                        console.warn('Failed to parse campaign content:', e);
+                      }
+                      
+                      // Format as email if it's an email campaign
+                      if (selectedCampaign.outreach_type === 'email') {
+                        const lines = formattedContent.split('\n');
+                        const emailParts: { subject?: string; body: string[] } = { body: [] };
+                        
+                        let isSubject = false;
+                        lines.forEach(line => {
+                          if (line.trim().toLowerCase().startsWith('subject:')) {
+                            emailParts.subject = line.replace(/^subject:\s*/i, '').trim();
+                            isSubject = true;
+                          } else if (line.trim() === '' && emailParts.body.length === 0) {
+                            // Skip empty lines between subject and body
+                            return;
+                          } else {
+                            emailParts.body.push(line);
+                          }
+                        });
+                        
+                        return (
+                          <Box>
+                            {emailParts.subject && (
+                              <Box sx={{ mb: 3, pb: 2, borderBottom: `1px solid ${mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}` }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
+                                  Subject:
+                                </Typography>
+                                <Typography variant="h6" fontWeight={600}>
+                                  {emailParts.subject}
+                                </Typography>
+                              </Box>
+                            )}
+                            <Typography
+                              variant="body1"
+                              component="div"
+                              sx={{
+                                whiteSpace: 'pre-wrap',
+                                lineHeight: 1.8,
+                                color: 'text.primary',
+                              }}
+                            >
+                              {emailParts.body.length > 0 ? emailParts.body.join('\n') : formattedContent}
+                            </Typography>
+                          </Box>
+                        );
+                      }
+                      
+                      // For call scripts and meeting agendas, format nicely
+                      return (
+                        <Typography
+                          variant="body1"
+                          component="div"
+                          sx={{
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: 1.8,
+                            color: 'text.primary',
+                          }}
+                        >
+                          {formattedContent}
+                        </Typography>
+                      );
+                    })()}
+                  </Box>
                 )}
               </Box>
 
@@ -898,22 +1146,6 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
           </Box>
           
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={true}
-                  sx={{
-                    '& .MuiSwitch-switchBase.Mui-checked': {
-                      color: mode === 'dark' ? 'white' : 'black',
-                    },
-                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                      backgroundColor: mode === 'dark' ? 'white' : 'black',
-                    }
-                  }}
-                />
-              }
-              label="AI Generated"
-            />
             
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography variant="body2">Campaign Type:</Typography>
