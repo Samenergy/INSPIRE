@@ -630,7 +630,8 @@ const StaticDocuments: React.FC = () => {
                   }
                 />
               </ListItemStyled>
-            ))}
+              ))
+            )}
           </List>
         </div>
 

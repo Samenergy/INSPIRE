@@ -2108,7 +2108,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
   // Function to generate AI description for an company (fallback only)
   // This should only be called when real data is not available
-  const generateAIDescription = (company: Account) => {
+  const generateAIDescription = (company: Company) => {
     // Check if real data already exists - don't overwrite it
     setAiDescription((prev) => {
       // If we already have real data (non-empty summary with actual content), don't overwrite
@@ -2195,11 +2195,11 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
 
   const handleAccountMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAccountMenuAnchor(event.currentTarget);
+    setCompanyMenuAnchor(event.currentTarget);
   };
 
   const handleAccountMenuClose = () => {
-    setAccountMenuAnchor(null);
+    setCompanyMenuAnchor(null);
   };
 
   // Function to open the campaign view

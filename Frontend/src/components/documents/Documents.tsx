@@ -487,39 +487,6 @@ const Documents = () => {
       setShowSaveSuccess(false);
     }, 3000);
   };
-      solution: 'Analytics',
-      type: 'call',
-      status: 'active',
-      progress: 100,
-      engagement: 81,
-      createdAt: '2023-11-08',
-      aiGenerated: true,
-      content: `1. Introduction:\n"Hello [Name], I'm calling regarding the healthcare analytics challenges we discussed at [Previous Interaction]. Has your organization made any progress in addressing patient outcome predictions and resource optimization?"\n\n2. Industry Context:\n"Many healthcare providers are struggling with the increasing demands for data-driven care while maintaining HIPAA compliance. Is this something your team is experiencing?"\n\n3. Pain Point Exploration:\n"Are you currently able to predict patient readmissions effectively? How about optimizing staff scheduling based on predicted patient volumes?"\n\n4. Solution Overview:\n"Our healthcare analytics platform combines clinical data with operational metrics to provide actionable insights while maintaining strict HIPAA compliance."\n\n5. Key Differentiators:\n"What makes our solution unique is its ability to integrate with all major EHR systems and provide predictive models specifically trained on healthcare data."\n\n6. Success Story:\n"We recently implemented this for [Similar Healthcare Provider], resulting in a 28% reduction in readmissions and 15% improvement in resource utilization."\n\n7. Call to Action:\n"I'd like to arrange a demonstration with your clinical and IT teams. Would next Wednesday work for a 30-minute session?"`,
-      owner: {
-        name: 'Sophia Williams',
-        avatar: 'https://randomuser.me/api/portraits/women/23.jpg'
-      }
-    },
-    {
-      id: 9,
-      title: 'Retail Digital Transformation Email',
-      description: 'Email template for retail businesses about digital transformation.',
-      image: 'https://images.unsplash.com/photo-1556742031-c6961e8560b0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1080&q=80',
-      clientGroup: 'Retail',
-      solution: 'Digital Transformation',
-      type: 'email',
-      status: 'active',
-      progress: 100,
-      engagement: 79,
-      createdAt: '2023-10-30',
-      aiGenerated: true,
-      content: `Subject: Transforming [Retail Company] for the Digital-First Consumer\n\nDear [Decision Maker],\n\nAs consumer shopping behaviors continue to evolve rapidly, I wanted to share how our Retail Digital Transformation solution could help [Retail Company] adapt and thrive in this changing landscape.\n\nBased on our analysis of your current digital presence and the specific challenges you mentioned during our last conversation, we've identified several opportunities:\n\n• Unified omnichannel experience connecting your physical and online stores\n• AI-powered personalization increasing average order value by 26%\n• Inventory optimization reducing carrying costs by 31%\n• Streamlined checkout process decreasing cart abandonment by 42%\n\nRetailers similar to yours have seen an average ROI of 3.2x within the first 12 months of implementation.\n\nI've attached a brief case study of how we helped [Similar Retailer] achieve a 47% increase in digital revenue while maintaining their brand identity and customer loyalty.\n\nWould you be available for a 30-minute call next week to discuss how we could tailor this approach for [Retail Company]?\n\nBest regards,\n[Your Name]\n[Your Contact Information]`,
-      owner: {
-        name: 'Daniel Park',
-        avatar: 'https://randomuser.me/api/portraits/men/57.jpg'
-      }
-    }
-  ];
 
   // Get the selected campaign
   const selectedCampaign: Campaign | null = campaigns.find(c => c.id === selectedCampaignId) || null;
