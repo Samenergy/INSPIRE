@@ -1,0 +1,31 @@
+id,accountName,location,organisationType,activeAssets,productFamily,exitRate,updates,color,percentPortfolio
+1,Master Card,London United Kingdom,Finance,6,Risk & Financial,"2,343.09",completed,#EB001B,3.2
+2,Twitter,San Francisco USA,Technology,4,Social Media,"1,987.65",completed,#1DA1F2,2.7
+3,Apple,Cupertino USA,Technology,8,Hardware & Software,"3,219.44",completed,#555555,4.4
+4,Financial Solutions,London UK,Finance,3,Financial Services,"1,850.75",completed,#4285F4,2.5
+5,Healthcare Plus,Boston USA,Healthcare,7,Healthcare IT,"2,750.30",completed,#34A853,3.8
+6,Retail Experts,Seattle USA,Retail,5,Retail Solutions,"1,950.60",completed,#EA4335,2.7
+7,Media Group,Los Angeles USA,Media,6,Media Solutions,"2,150.25",completed,#FBBC05,2.9
+8,Construction Partners,Dallas USA,Construction,4,Construction Management,"1,850.40",completed,#8E24AA,2.5
+9,Global Banking Corp,New York USA,Finance,9,Banking Solutions,"3,450.20",completed,#0077B5,4.7
+10,Insurance Alliance,Chicago USA,Insurance,5,Insurance Products,"2,100.75",completed,#FF6B00,2.9
+11,Energy Innovations,Houston USA,Energy,7,Renewable Energy,"2,850.30",completed,#00A651,3.9
+12,Telecom Services,Atlanta USA,Telecommunications,6,Network Solutions,"2,350.90",completed,#FF0000,3.2
+13,Automotive Group,Detroit USA,Automotive,8,Vehicle Systems,"2,750.45",completed,#1C69D4,3.8
+14,Aerospace Technologies,Seattle USA,Aerospace,5,Aviation Systems,"3,150.80",pending,#003E6B,4.3
+15,Pharmaceutical Inc,Boston USA,Pharmaceuticals,7,Medical Research,"2,950.60",completed,#009CDE,4.0
+16,Education Systems,Chicago USA,Education,4,Learning Platforms,"1,750.25",completed,#9C27B0,2.4
+17,Logistics Solutions,Memphis USA,Logistics,6,Supply Chain,"2,250.40",completed,#FF9800,3.1
+18,Real Estate Group,Miami USA,Real Estate,3,Property Management,"1,950.70",failed,#4CAF50,2.7
+19,Food & Beverage Co,San Francisco USA,Food & Beverage,5,Consumer Products,"2,050.35",completed,#F44336,2.8
+20,Legal Services,Washington DC,Legal,4,Compliance Solutions,"2,150.90",completed,#3F51B5,2.9
+21,Manufacturing Inc,Pittsburgh USA,Manufacturing,8,Production Systems,"2,650.45",completed,#795548,3.6
+22,Hospitality Group,Las Vegas USA,Hospitality,6,Guest Services,"2,250.30",completed,#607D8B,3.1
+23,Entertainment Corp,Los Angeles USA,Entertainment,7,Media Production,"2,450.75",loading,#9C27B0,3.4
+24,Consulting Partners,New York USA,Consulting,5,Business Advisory,"2,350.60",completed,#00BCD4,3.2
+25,Agriculture Systems,Des Moines USA,Agriculture,4,Farming Solutions,"1,850.40",completed,#8BC34A,2.5
+26,Mining Operations,Denver USA,Mining,6,Resource Extraction,"2,550.90",completed,#FF5722,3.5
+27,Fashion Retailers,Milan Italy,Fashion,5,Retail Analytics,"2,150.25",completed,#E91E63,2.9
+28,Chemical Industries,Frankfurt Germany,Chemical,7,Process Management,"2,750.80",completed,#673AB7,3.8
+29,Shipping Corporation,Rotterdam Netherlands,Shipping,6,Maritime Solutions,"2,450.35",completed,#2196F3,3.4
+30,Defense Systems,Arlington USA,Defense,8,Security Solutions,"3,250.70",completed,#455A64,4.5
