@@ -1,21 +1,29 @@
 version: '3.8'
 
 services:
+  # FastAPI Backend
   app:
     build: .
     ports:
       - "8000:8000"
     environment:
-      - MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/company_data
+      - MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/inspire
       - REDIS_URL=redis://redis:6379/0
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.1:latest
       - DEBUG=False
     depends_on:
       - mysql
       - redis
+      - milvus
+      - ollama
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
 
+  # MySQL Database
   mysql:
     image: mysql:8.0
     ports:
@@ -23,13 +31,14 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=password
-      - MYSQL_DATABASE=company_data
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-change_this_password}
+      - MYSQL_DATABASE=inspire
       - MYSQL_USER=app_user
-      - MYSQL_PASSWORD=app_password
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-change_this_password}
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password
 
+  # Redis Cache
   redis:
     image: redis:7-alpine
     ports:
@@ -38,13 +47,69 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+  # Milvus Vector Database
+  milvus:
+    image: milvusdb/milvus:latest
+    ports:
+      - "19530:19530"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    environment:
+      - ETCD_ENDPOINTS=etcd:2379
+      - MINIO_ADDRESS=minio:9000
+    depends_on:
+      - etcd
+      - minio
+    restart: unless-stopped
+
+  # Milvus Dependencies - etcd
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    restart: unless-stopped
+
+  # Milvus Dependencies - MinIO
+  minio:
+    image: minio/minio:latest
+    environment:
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    command: minio server /data --console-address ":9001"
+    restart: unless-stopped
+
+  # Ollama LLM Service
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull model on first start
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 10
+        ollama pull llama3.1:latest || true
+        wait
+    restart: unless-stopped
+
+  # Nginx (Reverse Proxy + Frontend)
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../Frontend/build:/usr/share/nginx/html:ro
     depends_on:
       - app
     restart: unless-stopped
@@ -52,3 +117,7 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  milvus_data:
+  etcd_data:
+  minio_data:
+  ollama_data:
