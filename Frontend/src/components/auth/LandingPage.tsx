@@ -193,7 +193,7 @@ export default function LandingPage(): JSX.Element {
               }}
             />
           ))}
-      </div>
+        </div>
 
         {/* Gradient overlay for depth */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/20 to-white/40" />
@@ -241,7 +241,7 @@ export default function LandingPage(): JSX.Element {
               >
                 How It Works
               </a>
-          </div>
+            </div>
 
             <div className="flex items-center space-x-4">
               <Link
@@ -328,9 +328,9 @@ export default function LandingPage(): JSX.Element {
                 <div key={index} className="text-center">
                   <div className="text-3xl md:text-4xl font-bold bg-white bg-clip-text text-transparent mb-2">
                     {stat.value}
-              </div>
+                  </div>
                   <div className="text-gray-200 text-sm">{stat.label}</div>
-            </div>
+                </div>
               ))}
             </motion.div>
           </div>
@@ -397,7 +397,7 @@ export default function LandingPage(): JSX.Element {
                       outcomes and measurable ROI for your organization.
                     </p>
                   </div>
-          </div>
+                </div>
 
                 <div className="group relative bg-gray-100/80 backdrop-blur-sm rounded-xl p-6 overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105">
                   {/* Background Image */}
@@ -525,7 +525,7 @@ export default function LandingPage(): JSX.Element {
                   className={`w-16 h-16 bg-gradient-to-r ${feature.color} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}
                 >
                   <feature.icon className="w-8 h-8 text-white" />
-            </div>
+                </div>
                 <h3 className="text-2xl font-bold mb-4 text-gray-900 group-hover:text-blue-600 transition-colors">
                   {feature.title}
                 </h3>
@@ -535,7 +535,7 @@ export default function LandingPage(): JSX.Element {
               </motion.div>
             ))}
           </div>
-            </div>
+        </div>
       </section>
 
       {/* Testimonials Section */}
@@ -582,8 +582,8 @@ export default function LandingPage(): JSX.Element {
                       }`}
                     />
                   ))}
-            </div>
-          </div>
+                </div>
+              </div>
 
               <div className="text-center max-w-4xl mx-auto">
                 <div className="flex items-center justify-center mb-8">
@@ -597,21 +597,21 @@ export default function LandingPage(): JSX.Element {
                       }}
                     />
                   </div>
-            </div>
+                </div>
 
                 <blockquote className="text-2xl md:text-3xl font-medium text-gray-900 mb-8 leading-relaxed">
                   "{testimonials[activeTestimonial].content}"
                 </blockquote>
 
-            <div>
+                <div>
                   <h4 className="text-xl font-bold text-gray-900 mb-2">
                     {testimonials[activeTestimonial].name}
                   </h4>
                   <p className="text-gray-600 text-lg">
                     {testimonials[activeTestimonial].role}
                   </p>
-            </div>
-          </div>
+                </div>
+              </div>
 
               {/* Star ratings */}
               <div className="flex justify-center mt-8">
@@ -759,7 +759,6 @@ export default function LandingPage(): JSX.Element {
                 >
                   Start Free Trial
                 </Link>
-                
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto text-blue-100">
@@ -774,9 +773,9 @@ export default function LandingPage(): JSX.Element {
                 <div className="flex items-center justify-center space-x-2 bg-white/10 backdrop-blur-sm rounded-lg px-4 py-3">
                   <CheckIcon className="w-5 h-5 flex-shrink-0" />
                   <span className="text-sm">Purpose Behind Every Move</span>
-          </div>
-        </div>
-      </div>
+                </div>
+              </div>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -784,7 +783,7 @@ export default function LandingPage(): JSX.Element {
       {/* Footer */}
       <footer className="py-12 px-6 border-t border-gray-200/50 bg-gray-50/50 relative z-10">
         <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center">
+          <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-2 mb-6 md:mb-0">
               <img
                 src="/inspire-logo.svg"
@@ -811,7 +810,7 @@ export default function LandingPage(): JSX.Element {
               <div className="text-gray-600 text-sm">
                 © 2025 Inspire. AI-powered B2B Intelligence Platform.
               </div>
-          </div>
+            </div>
           </div>
         </div>
       </footer>
