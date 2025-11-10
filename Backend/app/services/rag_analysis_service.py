@@ -17,10 +17,13 @@ Extracts 10 categories:
 
 import json
 import re
+import copy
+import hashlib
 import numpy as np
 import requests
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from collections import OrderedDict
 from loguru import logger
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -84,6 +87,10 @@ class RAGAnalysisService:
         self.collection = None
         self.in_memory_chunks = []
         self.in_memory_embeddings = None
+        self.analysis_cache: "OrderedDict[tuple, Dict[str, Any]]" = OrderedDict()
+        self.vector_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        self.cache_max_entries = 10
+        self.vector_cache_max_entries = 5
         
         if MILVUS_AVAILABLE:
             try:
@@ -101,6 +108,103 @@ class RAGAnalysisService:
             logger.info("📝 Using in-memory vector storage (Milvus not available)")
         
         logger.info("✅ RAG Analysis Service initialized")
+    
+    def _generate_articles_signature(self, articles: List[Dict[str, str]]) -> str:
+        """Generate deterministic signature for a list of articles"""
+        hasher = hashlib.sha256()
+        for article in sorted(articles, key=lambda a: (a.get('title', '') or '') + (a.get('content', '') or '')):
+            title = (article.get('title') or '').strip().lower()
+            content = (article.get('content') or '').strip().lower()
+            hasher.update(title.encode('utf-8', errors='ignore'))
+            hasher.update(b'\x00')
+            hasher.update(content.encode('utf-8', errors='ignore'))
+            hasher.update(b'\x01')
+        return hasher.hexdigest()
+    
+    def _make_vector_signature(self, articles_signature: str) -> str:
+        """Combine articles signature with chunking hyperparameters for vector cache"""
+        return f"{articles_signature}:{self.hyperparameters['chunk_size']}:{self.hyperparameters['chunk_overlap']}"
+    
+    def _make_cache_key(self, company_name: str, sme_objective: str, articles_signature: str) -> tuple:
+        """Create cache key including key hyperparameters and model choice"""
+        return (
+            company_name.strip().lower(),
+            (sme_objective or '').strip().lower(),
+            articles_signature,
+            self.llm_model,
+            self.hyperparameters['chunk_size'],
+            self.hyperparameters['chunk_overlap'],
+            self.hyperparameters['top_k'],
+            self.hyperparameters['temperature'],
+            self.hyperparameters['max_tokens'],
+        )
+    
+    def _get_cached_analysis(self, cache_key: tuple) -> Optional[Dict[str, Any]]:
+        """Return cached analysis result if available"""
+        entry = self.analysis_cache.get(cache_key)
+        if not entry:
+            return None
+        
+        # Move to end for LRU behavior
+        self.analysis_cache.move_to_end(cache_key)
+        
+        cached_result = copy.deepcopy(entry['result'])
+        cached_result['metadata']['timestamp'] = datetime.now().isoformat()
+        cached_result['metadata']['cache_hit'] = True
+        cached_result['metadata']['cached_at'] = entry['cached_at']
+        cached_result['metadata']['vector_store_reused'] = entry['result']['metadata'].get('vector_store_reused', False)
+        logger.info("🔁 Returning cached RAG analysis result")
+        return cached_result
+    
+    def _update_analysis_cache(self, cache_key: tuple, result: Dict[str, Any], articles_signature: str) -> None:
+        """Store analysis result in cache with LRU eviction"""
+        cached_at = datetime.now().isoformat()
+        result['metadata']['cached_at'] = cached_at
+        result['metadata']['cache_hit'] = False
+        cache_entry = {
+            'result': copy.deepcopy(result),
+            'cached_at': cached_at,
+            'articles_signature': articles_signature,
+        }
+        cache_entry['result']['metadata']['cached_at'] = cached_at
+        cache_entry['result']['metadata']['cache_hit'] = False
+        
+        self.analysis_cache[cache_key] = cache_entry
+        self.analysis_cache.move_to_end(cache_key)
+        
+        while len(self.analysis_cache) > self.cache_max_entries:
+            self.analysis_cache.popitem(last=False)
+    
+    def _get_vector_cache_entry(self, signature: str) -> Optional[Dict[str, Any]]:
+        """Retrieve vector store cache entry, keeping LRU order"""
+        entry = self.vector_cache.get(signature)
+        if entry:
+            self.vector_cache.move_to_end(signature)
+        return entry
+    
+    def _update_vector_cache(self, signature: str, entry: Dict[str, Any]) -> None:
+        """Store vector cache entry and evict old ones as needed"""
+        self.vector_cache[signature] = entry
+        self.vector_cache.move_to_end(signature)
+        
+        while len(self.vector_cache) > self.vector_cache_max_entries:
+            old_signature, old_entry = self.vector_cache.popitem(last=False)
+            if self.milvus_available and old_entry.get('vector_storage') == 'milvus':
+                collection_name = old_entry.get('collection_name')
+                if collection_name:
+                    try:
+                        if utility.has_collection(collection_name):
+                            Collection(name=collection_name).drop()
+                            logger.info(f"🧹 Dropped unused Milvus collection: {collection_name}")
+                    except Exception as exc:
+                        logger.warning(f"⚠️ Failed to drop Milvus collection {collection_name}: {exc}")
+    
+    def _get_collection_name(self, company_name: str, articles_signature: str) -> str:
+        """Generate deterministic Milvus collection name"""
+        sanitized = re.sub(r'[^a-z0-9]+', '_', company_name.lower()).strip('_')
+        if not sanitized:
+            sanitized = "company"
+        return f"company_rag_{sanitized[:24]}_{articles_signature[:8]}"
     
     def _chunk_text(self, text: str) -> List[str]:
         """Split text into overlapping chunks (max 1800 chars for Milvus)"""
@@ -133,13 +237,16 @@ class RAGAnalysisService:
             convert_to_numpy=True
         )
     
-    def _store_vectors_milvus(self, chunks: List[Dict[str, Any]]):
+    def _store_vectors_milvus(self, chunks: List[Dict[str, Any]], collection_name: str):
         """Store chunks and embeddings in Milvus"""
-        collection_name = f"company_rag_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        # Drop existing collection if exists
         if utility.has_collection(collection_name):
-            utility.drop_collection(collection_name)
+            try:
+                existing_collection = Collection(name=collection_name)
+                existing_collection.release()
+                existing_collection.drop()
+                logger.info(f"♻️  Replacing existing Milvus collection: {collection_name}")
+            except Exception as exc:
+                logger.warning(f"⚠️ Failed to drop existing Milvus collection {collection_name}: {exc}")
         
         # Define schema
         fields = [
@@ -447,37 +554,103 @@ class RAGAnalysisService:
         logger.info(f"🎯 Starting comprehensive RAG analysis for: {company_name}")
         logger.info(f"📚 Processing {len(articles)} articles")
         
-        # Step 1: Chunk all articles
-        all_chunks = []
-        for article in articles:
-            title = article.get('title', '')[:400]  # Truncate title to 400 chars
-            content = article.get('content', '')
-            text = f"{title} {content}"
+        articles_signature = self._generate_articles_signature(articles)
+        cache_key = self._make_cache_key(company_name, sme_objective, articles_signature)
+        cached_result = self._get_cached_analysis(cache_key)
+        if cached_result:
+            return cached_result
+        
+        vector_signature = self._make_vector_signature(articles_signature)
+        vector_cache_entry = self._get_vector_cache_entry(vector_signature)
+        vector_store_reused = False
+        vector_storage_used = 'milvus' if self.milvus_available else 'in-memory'
+        chunk_count = 0
+        collection_name = None
+        
+        if vector_cache_entry:
+            if self.milvus_available and vector_cache_entry.get('vector_storage') == 'milvus':
+                try:
+                    collection_name = vector_cache_entry.get('collection_name')
+                    if collection_name and utility.has_collection(collection_name):
+                        self.collection = Collection(name=collection_name)
+                        self.collection.load()
+                        chunk_count = vector_cache_entry.get('chunk_count', 0)
+                        vector_storage_used = 'milvus'
+                        vector_store_reused = True
+                        logger.info(f"♻️ Reusing Milvus collection '{collection_name}' ({chunk_count} chunks)")
+                    else:
+                        vector_cache_entry = None
+                        logger.info("ℹ️ Milvus collection not found or unavailable; regenerating vectors.")
+                except Exception as exc:
+                    vector_cache_entry = None
+                    self.collection = None
+                    logger.warning(f"⚠️ Failed to reuse Milvus collection: {exc}. Regenerating vectors.")
+            elif not self.milvus_available and vector_cache_entry.get('vector_storage') == 'memory':
+                try:
+                    self.in_memory_chunks = copy.deepcopy(vector_cache_entry['chunks'])
+                    self.in_memory_embeddings = vector_cache_entry['embeddings'].copy()
+                    chunk_count = vector_cache_entry.get('chunk_count', 0)
+                    vector_storage_used = 'in-memory'
+                    vector_store_reused = True
+                    logger.info(f"♻️ Reusing in-memory vector store ({chunk_count} chunks)")
+                except Exception as exc:
+                    vector_cache_entry = None
+                    self.in_memory_chunks = []
+                    self.in_memory_embeddings = None
+                    logger.warning(f"⚠️ Failed to reuse in-memory vectors: {exc}. Regenerating vectors.")
+        
+        all_chunks: List[Dict[str, Any]] = []
+        if not vector_store_reused:
+            # Step 1: Chunk all articles
+            for article in articles:
+                title = article.get('title', '')[:400]  # Truncate title to 400 chars
+                content = article.get('content', '')
+                text = f"{title} {content}"
+                
+                chunks = self._chunk_text(text)
+                for chunk in chunks:
+                    all_chunks.append({
+                        'text': chunk[:1800],  # Ensure max 1800 chars
+                        'title': title
+                    })
             
-            chunks = self._chunk_text(text)
-            for chunk in chunks:
-                all_chunks.append({
-                    'text': chunk[:1800],  # Ensure max 1800 chars
-                    'title': title
+            chunk_count = len(all_chunks)
+            logger.info(f"✂️ Created {chunk_count} chunks")
+            
+            # Step 2: Generate embeddings
+            logger.info("🔢 Generating embeddings...")
+            chunk_texts = [c['text'] for c in all_chunks]
+            embeddings = self._generate_embeddings(chunk_texts)
+            
+            for i, chunk in enumerate(all_chunks):
+                chunk['embedding'] = embeddings[i]
+            
+            logger.info(f"✅ Generated {len(embeddings)} embeddings")
+            
+            # Step 3: Store vectors
+            if self.milvus_available:
+                collection_name = self._get_collection_name(company_name, articles_signature)
+                self._store_vectors_milvus(all_chunks, collection_name)
+                vector_storage_used = 'milvus'
+                self._update_vector_cache(vector_signature, {
+                    'vector_storage': 'milvus',
+                    'collection_name': collection_name,
+                    'chunk_count': chunk_count,
+                    'stored_at': datetime.now().isoformat(),
                 })
-        
-        logger.info(f"✂️ Created {len(all_chunks)} chunks")
-        
-        # Step 2: Generate embeddings
-        logger.info("🔢 Generating embeddings...")
-        chunk_texts = [c['text'] for c in all_chunks]
-        embeddings = self._generate_embeddings(chunk_texts)
-        
-        for i, chunk in enumerate(all_chunks):
-            chunk['embedding'] = embeddings[i]
-        
-        logger.info(f"✅ Generated {len(embeddings)} embeddings")
-        
-        # Step 3: Store vectors
-        if self.milvus_available:
-            self._store_vectors_milvus(all_chunks)
+            else:
+                self._store_vectors_memory(all_chunks)
+                vector_storage_used = 'in-memory'
+                if self.in_memory_embeddings is not None:
+                    self._update_vector_cache(vector_signature, {
+                        'vector_storage': 'memory',
+                        'chunks': copy.deepcopy(self.in_memory_chunks),
+                        'embeddings': self.in_memory_embeddings.copy(),
+                        'chunk_count': chunk_count,
+                        'stored_at': datetime.now().isoformat(),
+                    })
         else:
-            self._store_vectors_memory(all_chunks)
+            logger.info("✅ Vector store reused successfully; skipping chunking and embedding regeneration.")
         
         # Step 4: Extract all 10 categories
         categories = self._get_category_configs(company_name, sme_objective)
@@ -512,21 +685,29 @@ class RAGAnalysisService:
         logger.info(f"✅ Analysis complete in {duration:.1f}s")
         logger.info(f"📊 Extracted {total_items} total items across 10 categories")
         
-        return {
-            'analysis': results,
-            'metadata': {
-                'company_name': company_name,
-                'sme_objective': sme_objective,
-                'articles_processed': len(articles),
-                'chunks_created': len(all_chunks),
-                'total_items_extracted': total_items,
-                'average_confidence': float(avg_confidence),
-                'duration_seconds': duration,
-                'timestamp': datetime.now().isoformat(),
-                'hyperparameters': self.hyperparameters,
-                'vector_storage': 'milvus' if self.milvus_available else 'in-memory'
-            }
+        metadata = {
+            'company_name': company_name,
+            'sme_objective': sme_objective,
+            'articles_processed': len(articles),
+            'chunks_created': chunk_count,
+            'total_items_extracted': total_items,
+            'average_confidence': float(avg_confidence),
+            'duration_seconds': duration,
+            'timestamp': datetime.now().isoformat(),
+            'hyperparameters': dict(self.hyperparameters),
+            'vector_storage': vector_storage_used,
+            'vector_store_reused': vector_store_reused,
+            'cache_hit': False,
+            'articles_signature': articles_signature,
         }
+        
+        result_payload = {
+            'analysis': results,
+            'metadata': metadata
+        }
+        
+        self._update_analysis_cache(cache_key, result_payload, articles_signature)
+        return result_payload
     
     def _get_category_configs(self, company_name: str, sme_objective: str) -> Dict[str, Dict[str, str]]:
         """Get configuration for all 10 categories"""

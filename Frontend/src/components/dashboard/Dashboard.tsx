@@ -96,10 +96,59 @@ interface DashboardStats {
 interface RecentActivity {
   type: string;
   id: number;
-  content: string;
+  content: string | Record<string, any> | null;
   date: string | null;
   source: string;
 }
+
+const formatActivityContent = (content: RecentActivity['content']): string => {
+  if (!content) return 'Activity';
+
+  const normalize = (value: any): string => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+
+    try {
+      if (Array.isArray(value?.updates)) {
+        return value.updates
+          .map((item: any) => item?.update || '')
+          .filter(Boolean)
+          .join(' • ');
+      }
+
+      if (value?.description) {
+        return typeof value.description === 'string'
+          ? value.description
+          : JSON.stringify(value.description);
+      }
+
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => normalize(item))
+          .filter(Boolean)
+          .join(' • ');
+      }
+
+      return JSON.stringify(value);
+    } catch (error) {
+      console.warn('Failed to normalize activity content', error);
+      return '';
+    }
+  };
+
+  if (typeof content === 'string') {
+    try {
+      const parsed = JSON.parse(content);
+      const formatted = normalize(parsed);
+      return formatted || content;
+    } catch (error) {
+      return content;
+    }
+  }
+
+  const formatted = normalize(content);
+  return formatted || 'Activity';
+};
 
 const Dashboard: React.FC = () => {
   const { mode } = useTheme();
@@ -724,7 +773,14 @@ const Dashboard: React.FC = () => {
                           {activity.type === 'recommendation' && <TrendingUpIcon color="success" />}
                         </ListItemIcon>
                         <ListItemText
-                          primary={activity.content?.substring(0, 60) + '...' || 'Activity'}
+                      primary={
+                        (() => {
+                          const formatted = formatActivityContent(activity.content);
+                          return formatted.length > 80
+                            ? `${formatted.substring(0, 77)}...`
+                            : formatted;
+                        })()
+                      }
                           secondary={activity.date ? new Date(activity.date).toLocaleDateString() : 'Recent'}
                         />
                       </ListItem>

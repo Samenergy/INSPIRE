@@ -153,6 +153,96 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isGenericTitle = (title?: string | null) => {
+    if (!title) return true;
+    const lower = title.trim().toLowerCase();
+    if (!lower) return true;
+    const patterns = [
+      'email outreach',
+      'call outreach',
+      'meeting outreach',
+      'outreach',
+      'meeting agenda',
+      'call script',
+      'meeting points',
+      'email template',
+      'call template',
+      'meeting template'
+    ];
+    return patterns.some(
+      (pattern) => lower === pattern || lower.includes(pattern)
+    );
+  };
+
+  const cleanContentForParsing = (content: string) =>
+    content.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+  const extractJsonString = (content: string): string | null => {
+    if (!content) return null;
+    const cleaned = cleanContentForParsing(content);
+    if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+      return cleaned;
+    }
+    const fenceRegex = /```json([\s\S]*?)```/im;
+    const fenceMatch = content.match(fenceRegex);
+    if (fenceMatch && fenceMatch[1]) {
+      return fenceMatch[1];
+    }
+    const jsonRegex = /(\{[\s\S]*\})/m;
+    const jsonMatch = cleaned.match(jsonRegex);
+    if (jsonMatch && jsonMatch[1]) {
+      return jsonMatch[1];
+    }
+    return null;
+  };
+
+  const getCampaignDisplayTitle = (campaign: Campaign): string => {
+    const fallbackTitle = campaign.title?.trim() || 'Campaign';
+    let result = fallbackTitle;
+
+    const consider = (candidate?: string | null) => {
+      if (!candidate) return;
+      const trimmed = candidate.trim();
+      if (!trimmed) return;
+      if (isGenericTitle(trimmed) && !isGenericTitle(result)) return;
+      if (isGenericTitle(result) || trimmed.toLowerCase() !== result.toLowerCase()) {
+        result = trimmed;
+      }
+    };
+
+    const content = campaign.content || '';
+    if (!content) return result;
+
+    const subjectMatch = content.match(/^\s*subject\s*:\s*(.+)$/im);
+    if (subjectMatch && subjectMatch[1]) {
+      consider(subjectMatch[1].split('\n')[0]);
+    }
+
+    const jsonString = extractJsonString(content);
+    if (jsonString) {
+      try {
+        const parsed = JSON.parse(jsonString);
+        if (parsed && typeof parsed === 'object') {
+          consider(parsed.title);
+          consider(parsed.subject);
+        }
+      } catch (error) {
+        console.warn('Failed to parse campaign JSON for title:', error);
+      }
+    }
+
+    if (isGenericTitle(result)) {
+      const cleaned = cleanContentForParsing(content);
+      const titleRegex = /"title"\s*:\s*"([^"]+)"/i;
+      const match = cleaned.match(titleRegex);
+      if (match && match[1]) {
+        consider(match[1]);
+      }
+    }
+
+    return result;
+  };
+
   // Load campaigns from backend
   useEffect(() => {
     const loadCampaigns = async () => {
@@ -496,76 +586,8 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
               </Box>
             ) : (
               filteredCampaigns.map(campaign => {
-                // Extract subject from content for email campaigns
-                let displayTitle = campaign.title;
-                
-                // For email campaigns, always try to extract subject from content
-                if (campaign.outreach_type === 'email') {
-                  try {
-                    const content = campaign.content.trim();
-                    let extractedSubject = null;
-                    
-                    // Method 1: Try JSON parsing if content is JSON
-                    if (content.startsWith('{')) {
-                      try {
-                        const parsed = JSON.parse(content);
-                        if (parsed.title && parsed.title.trim()) {
-                          extractedSubject = parsed.title.trim();
-                        }
-                      } catch (e) {
-                        // JSON parse failed, try regex
-                      }
-                    }
-                    
-                    // Method 2: Try regex extraction for "title": "subject" with escaping
-                    if (!extractedSubject) {
-                      const titleMatch = content.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                      if (titleMatch && titleMatch[1]) {
-                        // Unescape JSON string
-                        extractedSubject = titleMatch[1]
-                          .replace(/\\"/g, '"')
-                          .replace(/\\n/g, '\n')
-                          .replace(/\\t/g, '\t')
-                          .replace(/\\r/g, '\r')
-                          .replace(/\\\\/g, '\\')
-                          .trim();
-                      }
-                    }
-                    
-                    // Method 3: Try simpler regex for basic cases
-                    if (!extractedSubject) {
-                      const simpleMatch = content.match(/"title"\s*:\s*"([^"]+)"/);
-                      if (simpleMatch && simpleMatch[1]) {
-                        extractedSubject = simpleMatch[1].trim();
-                      }
-                    }
-                    
-                    // Use extracted subject if found and it's not generic
-                    if (extractedSubject && extractedSubject.length > 0) {
-                      const subjectLower = extractedSubject.toLowerCase();
-                      if (!subjectLower.includes('email outreach') && 
-                          !subjectLower.includes('generated') &&
-                          subjectLower !== 'email outreach' &&
-                          subjectLower !== 'outreach') {
-                        displayTitle = extractedSubject;
-                      } else {
-                        // Extracted subject is generic, check if current title is worse
-                        const titleLower = campaign.title.toLowerCase();
-                        if ((titleLower.includes('email outreach') || 
-                             titleLower === 'email outreach' ||
-                             titleLower === 'outreach') &&
-                            extractedSubject !== campaign.title) {
-                          // Both are generic, but use extracted anyway if different
-                          displayTitle = extractedSubject;
-                        }
-                      }
-                    }
-                  } catch (e) {
-                    // Keep original title if extraction fails
-                    console.warn('Failed to extract subject from campaign:', e);
-                  }
-                }
-                
+                const displayTitle = getCampaignDisplayTitle(campaign);
+
                 return (
                 <ListItemStyled
                   key={campaign.campaign_id}
@@ -633,80 +655,9 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
               <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                   <Box>
-                    {(() => {
-                      // Extract subject from content for email campaigns
-                      let displayTitle = selectedCampaign.title;
-                      
-                      // For email campaigns, always try to extract subject from content
-                      if (selectedCampaign.outreach_type === 'email') {
-                        try {
-                          const content = selectedCampaign.content.trim();
-                          let extractedSubject = null;
-                          
-                          // Method 1: Try JSON parsing
-                          if (content.startsWith('{')) {
-                            try {
-                              const parsed = JSON.parse(content);
-                              if (parsed.title && parsed.title.trim()) {
-                                extractedSubject = parsed.title.trim();
-                              }
-                            } catch (e) {
-                              // Try regex
-                            }
-                          }
-                          
-                          // Method 2: Try regex extraction with escaping
-                          if (!extractedSubject) {
-                            const titleMatch = content.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                            if (titleMatch && titleMatch[1]) {
-                              extractedSubject = titleMatch[1]
-                                .replace(/\\"/g, '"')
-                                .replace(/\\n/g, '\n')
-                                .replace(/\\t/g, '\t')
-                                .replace(/\\r/g, '\r')
-                                .replace(/\\\\/g, '\\')
-                                .trim();
-                            }
-                          }
-                          
-                          // Method 3: Try simpler regex
-                          if (!extractedSubject) {
-                            const simpleMatch = content.match(/"title"\s*:\s*"([^"]+)"/);
-                            if (simpleMatch && simpleMatch[1]) {
-                              extractedSubject = simpleMatch[1].trim();
-                            }
-                          }
-                          
-                          // Use extracted subject if found and it's not generic
-                          if (extractedSubject && extractedSubject.length > 0) {
-                            const subjectLower = extractedSubject.toLowerCase();
-                            if (!subjectLower.includes('email outreach') && 
-                                !subjectLower.includes('generated') &&
-                                subjectLower !== 'email outreach' &&
-                                subjectLower !== 'outreach') {
-                              displayTitle = extractedSubject;
-                            } else {
-                              // Extracted is generic, check if current title is worse
-                              const titleLower = selectedCampaign.title.toLowerCase();
-                              if ((titleLower.includes('email outreach') || 
-                                   titleLower === 'email outreach' ||
-                                   titleLower === 'outreach') &&
-                                  extractedSubject !== selectedCampaign.title) {
-                                displayTitle = extractedSubject;
-                              }
-                            }
-                          }
-                        } catch (e) {
-                          console.warn('Failed to extract subject from campaign:', e);
-                        }
-                      }
-                      
-                      return (
                     <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
-                          {displayTitle}
+                      {getCampaignDisplayTitle(selectedCampaign)}
                     </Typography>
-                      );
-                    })()}
                     <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
                       {selectedCampaign.company_name ? `Generated for ${selectedCampaign.company_name}` : 'Outreach content'}
                     </Typography>
@@ -884,6 +835,80 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                         console.warn('Failed to parse campaign content:', e);
                       }
                       
+                      const cleanMarkdownCodeFence = (text: string) => {
+                        if (!text) return text;
+                        return text
+                          .replace(/```json/gi, '')
+                          .replace(/```/g, '')
+                          .trim();
+                      };
+
+                      const tryParseJSON = (text: string): any | null => {
+                        if (!text) return null;
+                        try {
+                          return JSON.parse(text);
+                        } catch {
+                          return null;
+                        }
+                      };
+
+                      const extractJSONFromText = (text: string): string | null => {
+                        if (!text) return null;
+                        const cleaned = cleanMarkdownCodeFence(text);
+                        if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+                          return cleaned;
+                        }
+                        const jsonRegex = /(\{[\s\S]*\})/m;
+                        const hedgeRegex = /```json([\s\S]*?)```/im;
+                        const hedgeMatch = text.match(hedgeRegex);
+                        if (hedgeMatch && hedgeMatch[1]) {
+                          return hedgeMatch[1];
+                        }
+                        const jsonMatch = text.match(jsonRegex);
+                        if (jsonMatch && jsonMatch[1]) {
+                          return jsonMatch[1];
+                        }
+                        return null;
+                      };
+
+                      const flattenStructuredContent = (value: any, level = 0): string => {
+                        if (value === null || value === undefined) return '';
+                        if (typeof value === 'string') return value;
+                        if (typeof value === 'number' || typeof value === 'boolean') {
+                          return String(value);
+                        }
+                        if (Array.isArray(value)) {
+                          return value
+                            .map((item) => flattenStructuredContent(item, level))
+                            .filter(Boolean)
+                            .join('\n');
+                        }
+                        if (typeof value === 'object') {
+                          const lines: string[] = [];
+                          Object.entries(value).forEach(([key, val]) => {
+                            const title = key.replace(/_/g, ' ').trim();
+                            const prefix = level === 0 ? '' : '• ';
+                            if (title) {
+                              lines.push(`${prefix}${title}`);
+                            }
+                            const nested = flattenStructuredContent(val, level + 1);
+                            if (nested) {
+                              const indented = nested
+                                .split('\n')
+                                .map((line) =>
+                                  line.trim()
+                                    ? `${'  '.repeat(level + 1)}${line}`
+                                    : line
+                                )
+                                .join('\n');
+                              lines.push(indented);
+                            }
+                          });
+                          return lines.join('\n');
+                        }
+                        return '';
+                      };
+
                       // Format as email if it's an email campaign
                       if (selectedCampaign.outreach_type === 'email') {
                         const lines = formattedContent.split('\n');
@@ -929,6 +954,47 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                         );
                       }
                       
+                      if (selectedCampaign.outreach_type === 'meeting') {
+                        let meetingContent = formattedContent;
+                        let structuredData: any = null;
+                        const possibleJson = extractJSONFromText(formattedContent);
+                        const parsedStructure = tryParseJSON(possibleJson || formattedContent);
+                        if (parsedStructure) {
+                          structuredData = parsedStructure;
+                          const flat = flattenStructuredContent(parsedStructure);
+                          meetingContent = flat || meetingContent;
+                        } else {
+                          meetingContent = cleanMarkdownCodeFence(formattedContent);
+                        }
+
+                        meetingContent = meetingContent
+                          .replace(/Here is the generated meeting agenda in JSON format:?/i, '')
+                          .trim();
+
+                        const meetingTitle =
+                          structuredData?.title ||
+                          selectedCampaign.content.match(/"title"\s*:\s*"([^"]+)"/)?.[1] ||
+                          selectedCampaign.title;
+
+                        return (
+                          <Typography
+                            variant="body1"
+                            component="div"
+                            sx={{
+                              whiteSpace: 'pre-wrap',
+                              lineHeight: 1.8,
+                              color: 'text.primary',
+                              fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+                            }}
+                          >
+                            <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+                              {meetingTitle}
+                            </Typography>
+                            {meetingContent}
+                          </Typography>
+                        );
+                      }
+
                       // For call scripts and meeting agendas, format nicely
                       return (
                         <Typography

@@ -533,6 +533,7 @@ const DetailTab = styled(Button, {
 }));
 
 const AnimatedContainer = styled(Box)(({ theme }) => ({
+  position: "relative",
   transition: theme.transitions.create("all", {
     duration: theme.transitions.duration.standard,
     easing: theme.transitions.easing.easeInOut,
@@ -1104,13 +1105,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           setAnalysisProgressByCompany((prev) => ({
             ...prev,
             [companyId]: {
-              target:
-                boundedPercent >
-                (prev[companyId]?.target ?? boundedPercent)
-                  ? boundedPercent
-                  : prev[companyId]?.target ?? boundedPercent,
-              display: Math.min(
-                prev[companyId]?.display ?? boundedPercent,
+              target: Math.max(
+                prev[companyId]?.target ?? 0,
+                boundedPercent
+              ),
+              display: Math.max(
+                prev[companyId]?.display ?? 0,
                 boundedPercent
               ),
               message,
@@ -1137,8 +1137,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               ...prev,
               [companyId]: {
                 target: boundedPercent,
-                display: Math.min(
-                  prev[companyId]?.display ?? boundedPercent,
+                display: Math.max(
+                  prev[companyId]?.display ?? 0,
                   boundedPercent
                 ),
                 message: message || "Analysis failed.",
@@ -3448,16 +3448,14 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         {analyzingCompany && (
           <Box
             sx={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              position: "absolute",
+              inset: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.4)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 9999,
+              zIndex: 5,
+              pointerEvents: "none",
             }}
           >
             <Paper
@@ -3468,6 +3466,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 alignItems: "center",
                 gap: 3,
                 minWidth: 320,
+                pointerEvents: "auto",
               }}
             >
               <CircularProgress

@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     
     # Ollama / LLM Configuration
     ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="llama3.1:latest", env="OLLAMA_MODEL")
+    ollama_model: str = Field(default="llama3.1:8b-instruct-q4_K_M", env="OLLAMA_MODEL")
     
     # RAG Hyperparameters
     rag_temperature: float = Field(default=0.3, env="RAG_TEMPERATURE")
