@@ -5,6 +5,7 @@ Handles connections to the inspire database with proper error handling and conne
 
 import logging
 import json
+from datetime import datetime, date
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 import pymysql
@@ -743,20 +744,64 @@ class InspireDatabaseService:
         return stats
     
     async def get_recent_activity(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent activity across all tables"""
-        query = """
-        (SELECT 'recommendation' as type, rec_id as id, recommendation_text as content, date_generated as date, 'sme' as source
-         FROM recommendation ORDER BY date_generated DESC LIMIT %s)
-        UNION ALL
-        (SELECT 'analysis' as type, analysis_id as id, latest_updates as content, date_analyzed as date, 'company' as source
-         FROM analysis ORDER BY date_analyzed DESC LIMIT %s)
-        UNION ALL
-        (SELECT 'article' as type, article_id as id, title as content, published_date as date, 'company' as source
-         FROM article ORDER BY published_date DESC LIMIT %s)
-        ORDER BY date DESC
-        LIMIT %s
+        """Get recent activity across available tables.
+
+        Some deployments may not have all supporting tables (e.g., recommendation)
+        initialized yet. Instead of failing the entire dashboard, we attempt to
+        fetch activity from each table individually and skip any that error out.
         """
-        return await self.db.execute_query(query, (limit, limit, limit, limit))
+
+        queries = [
+            (
+                "recommendation",
+                "SELECT 'recommendation' AS type, rec_id AS id, recommendation_text AS content, "
+                "date_generated AS date, 'sme' AS source FROM recommendation "
+                "ORDER BY date_generated DESC LIMIT %s",
+            ),
+            (
+                "analysis",
+                "SELECT 'analysis' AS type, analysis_id AS id, latest_updates AS content, "
+                "date_analyzed AS date, 'company' AS source FROM analysis "
+                "ORDER BY date_analyzed DESC LIMIT %s",
+            ),
+            (
+                "article",
+                "SELECT 'article' AS type, article_id AS id, title AS content, "
+                "published_date AS date, 'company' AS source FROM article "
+                "ORDER BY published_date DESC LIMIT %s",
+            ),
+        ]
+
+        activities: List[Dict[str, Any]] = []
+
+        for source, query in queries:
+            try:
+                rows = await self.db.execute_query(query, (limit,))
+                activities.extend(rows)
+            except Exception as e:
+                logger.warning(
+                    "Skipping recent activity from %s due to error: %s", source, str(e)
+                )
+                continue
+
+        # Sort combined activities by date (most recent first) and cap to limit
+        def _sort_key(item: Dict[str, Any]):
+            value = item.get("date")
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, date):
+                return datetime.combine(value, datetime.min.time())
+            if isinstance(value, str):
+                for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+                    try:
+                        return datetime.strptime(value, fmt)
+                    except ValueError:
+                        continue
+            return datetime.min
+
+        activities.sort(key=_sort_key, reverse=True)
+
+        return activities[:limit]
     
     # Campaign/Outreach Operations
     async def create_campaign(self, sme_id: int, company_id: int, outreach_type: str, title: str, content: str) -> int:

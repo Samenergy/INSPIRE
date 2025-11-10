@@ -49,6 +49,7 @@ import {
   Step,
   StepLabel,
   Stepper,
+  LinearProgress,
 } from "@mui/material";
 import { useTheme as useMuiTheme } from "@mui/material/styles";
 import { useTheme } from "../../context/ThemeContext";
@@ -407,16 +408,16 @@ const stringToColor = (string: string) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-// Function to generate initials from a name
+// Function to generate a single-letter avatar from a name
 const getInitials = (name: string) => {
-  // Safety check to avoid errors
-  if (!name) return "??";
-  
-  const words = name.split(" ");
-  if (words.length === 1) {
-    return words[0].substring(0, 2).toUpperCase();
-  }
-  return (words[0][0] + words[1][0]).toUpperCase();
+  if (!name) return "?";
+
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+
+  // Find the first alphanumeric character to use as the avatar letter
+  const match = trimmed.match(/[A-Za-z0-9]/);
+  return (match ? match[0] : trimmed.charAt(0)).toUpperCase();
 };
 
 // Base companies that will be used as templates (fallback if CSV loading fails)
@@ -758,16 +759,30 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   >([]);
   const [loading, setLoading] = useState(false);
   const [analyzingCompany, setAnalyzingCompany] = useState(false);
-  const [generatingOutreach, setGeneratingOutreach] = useState<string | null>(null); // Track which outreach type is being generated
-  const [, setAssetsDropdownOpen] = useState<number | null>(
-    null
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisProgressTarget, setAnalysisProgressTarget] = useState(0);
+  const [analysisStatusMessage, setAnalysisStatusMessage] = useState(
+    "Starting analysis..."
   );
+  const [analysisCompletionPending, setAnalysisCompletionPending] =
+    useState(false);
+  const [analysisProgressByCompany, setAnalysisProgressByCompany] = useState<
+    Record<number, { target: number; display: number; message: string }>
+  >({});
+  const [generatingOutreach, setGeneratingOutreach] = useState<string | null>(
+    null
+  ); // Track which outreach type is being generated
+  const [, setAssetsDropdownOpen] = useState<number | null>(null);
   
   // Animation states
   const [showAnimation, setShowAnimation] = useState(false);
-  const [animationIconType, setAnimationIconType] = useState<'email' | 'call' | 'meeting'>('email');
-  const [animationStartElement, setAnimationStartElement] = useState<HTMLElement | null>(null);
-  const [animationEndElement, setAnimationEndElement] = useState<HTMLElement | null>(null);
+  const [animationIconType, setAnimationIconType] = useState<
+    "email" | "call" | "meeting"
+  >("email");
+  const [animationStartElement, setAnimationStartElement] =
+    useState<HTMLElement | null>(null);
+  const [animationEndElement, setAnimationEndElement] =
+    useState<HTMLElement | null>(null);
   const assetsDropdownRef = React.useRef<HTMLDivElement>(null);
   const [notification, setNotification] = useState<{
     open: boolean;
@@ -787,7 +802,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<null | HTMLElement>(
     null
   );
-  const [outreachMenuAnchor, setOutreachMenuAnchor] = useState<null | HTMLElement>(null);
+  const [outreachMenuAnchor, setOutreachMenuAnchor] =
+    useState<null | HTMLElement>(null);
   const [expandedInsights, setExpandedInsights] = useState<number[]>([]);
   const [filters, setFilters] = useState<{
     location: string[];
@@ -807,6 +823,19 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [newTaskText, setNewTaskText] = useState("");
   const [animatingTransition, setAnimatingTransition] = useState(false);
+  const analysisProgressIntervalRef =
+    React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const analysisResetTimeoutRef =
+    React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysisJobMetaRef = React.useRef<{
+    jobId: string;
+    companyId: number;
+  } | null>(null);
+  const analysisProgressTargetRef = React.useRef(0);
+
+  React.useEffect(() => {
+    analysisProgressTargetRef.current = analysisProgressTarget;
+  }, [analysisProgressTarget]);
 
   // Company creation and import states
   const [openAddCompanyDialog, setOpenAddCompanyDialog] = useState(false);
@@ -850,7 +879,6 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     isLoading: false,
   });
 
-
   // Campaigns state for storing generated templates
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
 
@@ -875,41 +903,48 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   // Add company dialog state (using different name to avoid conflict)
   const [addCompanyDialogOpen, setAddCompanyDialogOpen] = useState(false);
   const [addCompanyForm, setAddCompanyForm] = useState({
-    name: '',
-    location: '',
-    industry: '',
-    website: '',
-    description: ''
+    name: "",
+    location: "",
+    industry: "",
+    website: "",
+    description: "",
   });
 
   // Edit company dialog state
   const [editCompanyDialogOpen, setEditCompanyDialogOpen] = useState(false);
   const [editCompanyForm, setEditCompanyForm] = useState({
-    name: '',
-    location: '',
-    industry: '',
-    website: '',
-    description: ''
+    name: "",
+    location: "",
+    industry: "",
+    website: "",
+    description: "",
   });
 
   // Load companies from backend API
   const loadCompanies = async (): Promise<Company[]> => {
     try {
       if (!user?.sme_id) {
-        console.log('No user or sme_id found, skipping company load');
+        console.log("No user or sme_id found, skipping company load");
         return [];
       }
 
       // Fetch companies from backend API filtered by sme_id
-      const response = await fetch(`http://localhost:8000/api/inspire/companies?sme_id=${user.sme_id}`, {
+      const response = await fetch(
+        `http://localhost:8000/api/inspire/companies?sme_id=${user.sme_id}`,
+        {
         headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+            "Content-Type": "application/json",
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
+          },
         }
-      });
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch companies');
+        throw new Error("Failed to fetch companies");
       }
 
       const apiResponse = await response.json();
@@ -919,21 +954,21 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       const transformedCompanies: Company[] = companies.map((company: any) => ({
         id: company.company_id,
         companyName: company.name,
-        location: company.location || 'Unknown',
-        industry: company.industry || 'General',
-        activeAssets: '0', // Not available from backend
+        location: company.location || "Unknown",
+        industry: company.industry || "General",
+        activeAssets: "0", // Not available from backend
         assets: [],
-        productFamily: 'General', // Not available from backend
-        exitRate: '0.00', // Not available from backend
-        updates: 'completed' as 'completed',
-        logoSrc: '/images/avatar.png',
+        productFamily: "General", // Not available from backend
+        exitRate: "0.00", // Not available from backend
+        updates: "completed" as "completed",
+        logoSrc: "/images/avatar.png",
         color: stringToColor(company.name),
         website: company.website,
       }));
 
       return transformedCompanies;
     } catch (error) {
-      console.error('Error loading companies from API:', error);
+      console.error("Error loading companies from API:", error);
       return [];
     }
   };
@@ -955,6 +990,240 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     initializeCompanies();
   }, [user?.sme_id]);
 
+  const clearAnalysisProgress = (
+    status?: "completed" | "failed",
+    companyId?: number,
+    message?: string
+  ) => {
+    if (analysisProgressIntervalRef.current !== null) {
+      window.clearInterval(analysisProgressIntervalRef.current);
+      analysisProgressIntervalRef.current = null;
+    }
+
+    if (status && companyId) {
+      setAnalysisProgressByCompany((prev) => {
+        const previousEntry = prev[companyId];
+        const previousDisplay =
+          previousEntry?.display ?? previousEntry?.target ?? 0;
+        const shouldAnimateToTarget =
+          status === "completed" && analyzingCompany;
+
+        return {
+          ...prev,
+          [companyId]: {
+            target: status === "completed" ? 100 : previousEntry?.target ?? 0,
+            display: shouldAnimateToTarget
+              ? previousDisplay
+              : status === "completed"
+              ? 100
+              : previousDisplay,
+            message:
+              message ||
+              (status === "completed"
+                ? "Analysis completed."
+                : "Analysis failed."),
+          },
+        };
+      });
+      if (
+        analysisJobMetaRef.current &&
+        analysisJobMetaRef.current.companyId === companyId
+      ) {
+        setAnalysisProgressTarget(
+          status === "completed" ? 100 : analysisProgressTargetRef.current
+        );
+      }
+    }
+  };
+
+  const startAnalysisProgressPolling = (jobId: string, companyId: number) => {
+    if (!jobId || !companyId) return;
+
+    if (analysisProgressIntervalRef.current !== null) {
+      window.clearInterval(analysisProgressIntervalRef.current);
+    }
+    if (analysisResetTimeoutRef.current !== null) {
+      window.clearTimeout(analysisResetTimeoutRef.current);
+      analysisResetTimeoutRef.current = null;
+    }
+
+    analysisJobMetaRef.current = { jobId, companyId };
+
+    const initialMessage = "Starting analysis...";
+    const initialProgress = 10;
+    setAnalysisProgress(initialProgress);
+    setAnalysisProgressTarget(initialProgress);
+    setAnalysisStatusMessage(initialMessage);
+    setAnalysisProgressByCompany((prev) => ({
+      ...prev,
+      [companyId]: {
+        target: initialProgress,
+      display: initialProgress,
+        message: initialMessage,
+      },
+    }));
+
+    const pollProgress = async () => {
+      try {
+        const progressResponse = await fetch(
+          `http://localhost:8000/api/v1/unified/unified-analysis/progress/${jobId}`,
+          {
+            headers: {
+              ...(localStorage.getItem("auth_token")
+                ? {
+                    Authorization: `Bearer ${localStorage.getItem(
+                      "auth_token"
+                    )}`,
+                  }
+                : {}),
+            },
+          }
+        );
+
+        if (!progressResponse.ok) {
+          throw new Error("Failed to fetch analysis progress");
+        }
+
+        const progressData = await progressResponse.json();
+
+        if (progressData.success && progressData.data) {
+          const rawPercent = progressData.data.percent;
+          const percent =
+            typeof rawPercent === "number"
+              ? rawPercent
+              : parseFloat(rawPercent ?? "0");
+          const boundedPercent = Math.max(0, Math.min(100, percent));
+          const message =
+            progressData.data.message || "Processing company analysis...";
+          const status = progressData.data.status || "running";
+
+          setAnalysisProgressTarget((prevTarget) =>
+            boundedPercent > prevTarget ? boundedPercent : prevTarget
+          );
+          setAnalysisStatusMessage(message);
+          setAnalysisProgressByCompany((prev) => ({
+            ...prev,
+            [companyId]: {
+              target:
+                boundedPercent >
+                (prev[companyId]?.target ?? boundedPercent)
+                  ? boundedPercent
+                  : prev[companyId]?.target ?? boundedPercent,
+              display: Math.min(
+                prev[companyId]?.display ?? boundedPercent,
+                boundedPercent
+              ),
+              message,
+            },
+          }));
+
+          if (status === "completed" || boundedPercent >= 100) {
+            setAnalysisProgressTarget(100);
+            setAnalysisStatusMessage(
+              message || "Analysis completed successfully."
+            );
+            setAnalysisProgressByCompany((prev) => ({
+              ...prev,
+              [companyId]: {
+                target: 100,
+                display: 100,
+                message: message || "Analysis completed successfully.",
+              },
+            }));
+            clearAnalysisProgress();
+          } else if (status === "failed") {
+            setAnalysisStatusMessage(message || "Analysis failed.");
+            setAnalysisProgressByCompany((prev) => ({
+              ...prev,
+              [companyId]: {
+                target: boundedPercent,
+                display: Math.min(
+                  prev[companyId]?.display ?? boundedPercent,
+                  boundedPercent
+                ),
+                message: message || "Analysis failed.",
+              },
+            }));
+            clearAnalysisProgress();
+          }
+        }
+      } catch (error) {
+        console.warn("Analysis progress polling error:", error);
+      }
+    };
+
+    pollProgress();
+    analysisProgressIntervalRef.current = window.setInterval(pollProgress, 2000);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (analysisProgressIntervalRef.current !== null) {
+        window.clearInterval(analysisProgressIntervalRef.current);
+      }
+      if (analysisResetTimeoutRef.current !== null) {
+        window.clearTimeout(analysisResetTimeoutRef.current);
+        analysisResetTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!analyzingCompany) return;
+
+    const animationInterval = window.setInterval(() => {
+      const target = analysisProgressTargetRef.current;
+
+      setAnalysisProgress((prev) => {
+        if (prev >= target) {
+          return prev;
+        }
+        const nextStep = Math.ceil((prev + 1) / 10) * 10;
+        const next = Math.min(target, Math.max(prev + 1, nextStep));
+        return next;
+      });
+
+      if (analysisJobMetaRef.current) {
+        const { companyId } = analysisJobMetaRef.current;
+        setAnalysisProgressByCompany((prev) => {
+          const entry = prev[companyId];
+          if (!entry) return prev;
+          if (entry.display >= entry.target) return prev;
+          const entryNextStep = Math.ceil((entry.display + 1) / 10) * 10;
+          const nextDisplay = Math.min(
+            entry.target,
+            Math.max(entry.display + 1, entryNextStep)
+          );
+          if (nextDisplay === entry.display) return prev;
+          return {
+            ...prev,
+            [companyId]: { ...entry, display: nextDisplay },
+          };
+        });
+      }
+    }, 700);
+
+    return () => {
+      window.clearInterval(animationInterval);
+    };
+  }, [analyzingCompany, analysisProgressTarget]);
+
+  React.useEffect(() => {
+    if (!analysisCompletionPending) return;
+    if (analysisProgress < 100) return;
+    if (analysisResetTimeoutRef.current !== null) return;
+
+    analysisResetTimeoutRef.current = window.setTimeout(() => {
+      setAnalysisCompletionPending(false);
+      setAnalyzingCompany(false);
+      analysisJobMetaRef.current = null;
+      setAnalysisProgressTarget(0);
+      setAnalysisProgress(0);
+      setAnalysisStatusMessage("Starting analysis...");
+      analysisResetTimeoutRef.current = null;
+    }, 800);
+  }, [analysisCompletionPending, analysisProgress]);
+
   // Function to open add company dialog
   const handleAddCompany = () => {
     setAddCompanyDialogOpen(true);
@@ -965,11 +1234,11 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     setAddCompanyDialogOpen(false);
     // Reset form
     setAddCompanyForm({
-      name: '',
-      location: '',
-      industry: '',
-      website: '',
-      description: ''
+      name: "",
+      location: "",
+      industry: "",
+      website: "",
+      description: "",
     });
   };
 
@@ -981,8 +1250,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         name: menuCompany.companyName,
         location: menuCompany.location,
         industry: menuCompany.industry,
-        website: menuCompany.website || '',
-        description: ''
+        website: menuCompany.website || "",
+        description: "",
       });
       setEditCompanyDialogOpen(true);
       setCompanyMenuAnchor(null);
@@ -994,11 +1263,11 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     setEditCompanyDialogOpen(false);
     // Reset form
     setEditCompanyForm({
-      name: '',
-      location: '',
-      industry: '',
-      website: '',
-      description: ''
+      name: "",
+      location: "",
+      industry: "",
+      website: "",
+      description: "",
     });
   };
 
@@ -1017,24 +1286,31 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     try {
       setLoading(true);
       
-      const response = await fetch(`http://localhost:8000/api/inspire/companies/${menuCompany.id}`, {
-        method: 'PUT',
+      const response = await fetch(
+        `http://localhost:8000/api/inspire/companies/${menuCompany.id}`,
+        {
+          method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+            "Content-Type": "application/json",
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
         },
         body: JSON.stringify({
           name: editCompanyForm.name,
           location: editCompanyForm.location,
           industry: editCompanyForm.industry,
-          website: editCompanyForm.website || '',
+            website: editCompanyForm.website || "",
           description: editCompanyForm.description,
-          sme_id: user?.sme_id
-        })
-      });
+            sme_id: user?.sme_id,
+          }),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to update company');
+        throw new Error("Failed to update company");
       }
 
       // Reload companies list to show updated data
@@ -1051,7 +1327,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         companyId: menuCompany.id,
       });
     } catch (error) {
-      console.error('Error updating company:', error);
+      console.error("Error updating company:", error);
       setNotification({
         open: true,
         message: "Failed to update company",
@@ -1075,35 +1351,73 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       return;
     }
 
+    let analysisCompletedSuccessfully = false;
+
     try {
       setAnalyzingCompany(true);
+      setAnalysisCompletionPending(false);
+      setAnalysisProgress(0);
+      setAnalysisProgressTarget(0);
+      const companyId = selectedCompany.id;
+      const companyName = selectedCompany.companyName;
       
       // Get SME objective from user or default
-      const sme_objective = user.objective || "General business intelligence and market analysis";
+      const sme_objective =
+        user.objective || "General business intelligence and market analysis";
+
+      if (companyId) {
+        setCompanies((prev) =>
+          prev.map((company) =>
+            company.id === companyId
+              ? { ...company, updates: "loading" as "loading" }
+              : company
+          )
+        );
+        setSelectedCompany((prev) =>
+          prev ? { ...prev, updates: "loading" as "loading" } : prev
+        );
+      }
+
+      const jobIdentifier = `analysis-${companyId ?? "manual"}-${Date.now()}`;
 
       // Call unified analysis endpoint
       const formData = new FormData();
-      formData.append('company_name', selectedCompany.companyName);
-      formData.append('company_location', selectedCompany.location);
-      formData.append('sme_id', user.sme_id.toString());
-      formData.append('sme_objective', sme_objective);
-      formData.append('max_articles', '100');
+      formData.append("company_name", selectedCompany.companyName);
+      formData.append("company_location", selectedCompany.location);
+      formData.append("sme_id", user.sme_id.toString());
+      formData.append("sme_objective", sme_objective);
+      formData.append("max_articles", "100");
       // Pass company_id if available (when manually analyzing an existing company)
       if (selectedCompany.id) {
-        formData.append('company_id', selectedCompany.id.toString());
+        formData.append("company_id", selectedCompany.id.toString());
+      }
+      formData.append("job_id", jobIdentifier);
+
+      if (companyId) {
+        startAnalysisProgressPolling(jobIdentifier, companyId);
+      } else {
+        setAnalysisProgress(5);
+        setAnalysisStatusMessage("Starting analysis...");
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/unified/unified-analysis', {
-        method: 'POST',
+      const response = await fetch(
+        "http://localhost:8000/api/v1/unified/unified-analysis",
+        {
+          method: "POST",
         headers: {
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
-        },
-        body: formData
-      });
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
+          },
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Analysis failed');
+        throw new Error(errorData.detail || "Analysis failed");
       }
 
       const result = await response.json();
@@ -1111,15 +1425,15 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       // Store analysis results
       if (result.data) {
         const ragAnalysis = result.data.rag_analysis || {};
-        
+
         console.log("📰 Articles received:", result.data.all_articles);
         console.log("🤖 RAG Analysis received:", ragAnalysis);
-        
+
         // Extract company_info, strengths, and opportunities from RAG analysis
         const companyInfoData = ragAnalysis["8_company_info"]?.data || {};
         const strengthsData = ragAnalysis["9_strengths"]?.data || {};
         const opportunitiesData = ragAnalysis["10_opportunities"]?.data || {};
-        
+
         // Format company_info as a paragraph (5 sentences)
         let companyInfoText = "";
         if (companyInfoData.description) {
@@ -1128,70 +1442,120 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             companyInfoData.description.sentence2,
             companyInfoData.description.sentence3,
             companyInfoData.description.sentence4,
-            companyInfoData.description.sentence5
-          ].filter(s => s && s.trim()).join(" ");
+            companyInfoData.description.sentence5,
+          ]
+            .filter((s) => s && s.trim())
+            .join(" ");
           companyInfoText = sentences;
         }
-        
+
         // Format strengths as array of strings
         const strengthsArray: string[] = [];
         if (strengthsData.strengths && Array.isArray(strengthsData.strengths)) {
-          strengthsArray.push(...strengthsData.strengths.map((s: any) => {
-            const strengthText = s.strength || "";
-            const evidenceText = s.evidence ? ` (${s.evidence})` : "";
-            return `${strengthText}${evidenceText}`;
-          }));
+          strengthsArray.push(
+            ...strengthsData.strengths.map((s: any) => {
+              const strengthText = s.strength || "";
+              const evidenceText = s.evidence ? ` (${s.evidence})` : "";
+              return `${strengthText}${evidenceText}`;
+            })
+          );
         }
-        
+
         // Format opportunities as array of strings
         const opportunitiesArray: string[] = [];
-        if (opportunitiesData.opportunities && Array.isArray(opportunitiesData.opportunities)) {
-          opportunitiesArray.push(...opportunitiesData.opportunities.map((o: any) => {
-            const oppText = o.opportunity || "";
-            const basisText = o.basis ? ` - ${o.basis}` : "";
-            return `${oppText}${basisText}`;
-          }));
+        if (
+          opportunitiesData.opportunities &&
+          Array.isArray(opportunitiesData.opportunities)
+        ) {
+          opportunitiesArray.push(
+            ...opportunitiesData.opportunities.map((o: any) => {
+              const oppText = o.opportunity || "";
+              const basisText = o.basis ? ` - ${o.basis}` : "";
+              return `${oppText}${basisText}`;
+            })
+          );
         }
-        
+
         // Update AI description with RAG data
         setAiDescription({
           summary: companyInfoText || aiDescription.summary,
-          strengths: strengthsArray.length > 0 ? strengthsArray : aiDescription.strengths,
-          opportunities: opportunitiesArray.length > 0 ? opportunitiesArray : aiDescription.opportunities,
+          strengths:
+            strengthsArray.length > 0
+              ? strengthsArray
+              : aiDescription.strengths,
+          opportunities:
+            opportunitiesArray.length > 0
+              ? opportunitiesArray
+              : aiDescription.opportunities,
           isLoading: false,
         });
         
         // Store in selectedCompany for display
-        setSelectedCompany({
-          ...selectedCompany,
+        setSelectedCompany((prev) =>
+          prev
+            ? {
+                ...prev,
           insights: [
             {
               question: "What are the latest company updates?",
-              points: ragAnalysis["1_latest_updates"]?.data?.updates?.map((u: any) => u.update || "") || []
+                    points:
+                      ragAnalysis["1_latest_updates"]?.data?.updates?.map(
+                        (u: any) => u.update || ""
+                      ) || [],
             },
             {
               question: "What are the company's challenges?",
-              points: ragAnalysis["2_challenges"]?.data?.challenges?.map((c: any) => `${c.challenge || ""}${c.impact ? ` (Impact: ${c.impact})` : ""}`) || []
+                    points:
+                      ragAnalysis["2_challenges"]?.data?.challenges?.map(
+                        (c: any) =>
+                          `${c.challenge || ""}${
+                            c.impact ? ` (Impact: ${c.impact})` : ""
+                          }`
+                      ) || [],
             },
             {
               question: "Who are the key decision-makers?",
-              points: ragAnalysis["3_decision_makers"]?.data?.decision_makers?.map((d: any) => `${d.name || ""} - ${d.role || ""}`) || []
+                    points:
+                      ragAnalysis["3_decision_makers"]?.data?.decision_makers?.map(
+                        (d: any) => `${d.name || ""} - ${d.role || ""}`
+                      ) || [],
             },
             {
               question: "How does the company position itself?",
-              points: [ragAnalysis["4_market_position"]?.data?.description || ""].filter(p => p)
+                    points: [
+                      ragAnalysis["4_market_position"]?.data?.description || "",
+                    ].filter((p) => p),
             },
             {
               question: "What are the company's future plans?",
-              points: ragAnalysis["5_future_plans"]?.data?.plans?.map((p: any) => `${p.plan || ""}${p.timeline ? ` (Timeline: ${p.timeline})` : ""}`) || []
-            }
-          ],
-          actionPlan: JSON.stringify(ragAnalysis["6_action_plan"]?.data || {}),
-          suggestedSolutions: JSON.stringify(ragAnalysis["7_solution"]?.data || {}),
-          articles: result.data.articles_by_classification || result.data.all_articles || {}
-        });
-        
-        console.log("📰 Articles stored in selectedCompany:", result.data.all_articles);
+                    points:
+                      ragAnalysis["5_future_plans"]?.data?.plans?.map(
+                        (p: any) =>
+                          `${p.plan || ""}${
+                            p.timeline ? ` (Timeline: ${p.timeline})` : ""
+                          }`
+                      ) || [],
+                  },
+                ],
+                actionPlan: JSON.stringify(
+                  ragAnalysis["6_action_plan"]?.data || {}
+                ),
+                suggestedSolutions: JSON.stringify(
+                  ragAnalysis["7_solution"]?.data || {}
+                ),
+                articles:
+                  result.data.articles_by_classification ||
+                  result.data.all_articles ||
+                  {},
+                updates: "completed",
+              }
+            : prev
+        );
+
+        console.log(
+          "📰 Articles stored in selectedCompany:",
+          result.data.all_articles
+        );
         console.log("✅ Company Info, Strengths, Opportunities updated");
       }
 
@@ -1202,24 +1566,74 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         companyId: selectedCompany.id,
       });
 
+      if (companyId) {
+        setAnalysisProgressTarget((prev) => Math.max(prev, 100));
+        setAnalysisStatusMessage("Analysis completed successfully.");
+        clearAnalysisProgress(
+          "completed",
+          companyId,
+          `Analysis completed for ${companyName}.`
+        );
+        analysisCompletedSuccessfully = true;
+        setAnalysisCompletionPending(true);
+      }
+
       // Reload companies to show updated data
       const updatedCompanies = await loadCompanies();
       setCompanies(updatedCompanies);
     } catch (error: any) {
-      console.error('Error analyzing company:', error);
+      console.error("Error analyzing company:", error);
+      setAnalysisCompletionPending(false);
       setNotification({
         open: true,
         message: error.message || "Failed to analyze company",
         severity: "error",
         companyId: null,
       });
+
+      if (selectedCompany?.id) {
+        setAnalysisStatusMessage(error.message || "Analysis failed.");
+        setCompanies((prev) =>
+          prev.map((company) =>
+            company.id === selectedCompany.id
+              ? { ...company, updates: "failed" as "failed" }
+              : company
+          )
+        );
+        setSelectedCompany((prev) =>
+          prev ? { ...prev, updates: "failed" as "failed" } : prev
+        );
+        clearAnalysisProgress(
+          "failed",
+          selectedCompany.id,
+          error.message || "Analysis failed."
+        );
+      }
     } finally {
-      setAnalyzingCompany(false);
+      if (analysisProgressIntervalRef.current !== null) {
+        window.clearInterval(analysisProgressIntervalRef.current);
+        analysisProgressIntervalRef.current = null;
+      }
+
+      if (!analysisCompletedSuccessfully) {
+        if (analysisResetTimeoutRef.current !== null) {
+          window.clearTimeout(analysisResetTimeoutRef.current);
+          analysisResetTimeoutRef.current = null;
+        }
+        setAnalysisCompletionPending(false);
+        setAnalyzingCompany(false);
+        analysisJobMetaRef.current = null;
+        setAnalysisProgressTarget(0);
+        setAnalysisProgress(0);
+        setAnalysisStatusMessage("Starting analysis...");
+      }
     }
   };
 
   // Function to generate outreach content
-  const handleGenerateOutreach = async (outreachType: 'email' | 'call' | 'meeting') => {
+  const handleGenerateOutreach = async (
+    outreachType: "email" | "call" | "meeting"
+  ) => {
     if (!selectedCompany || !user?.sme_id) {
       setNotification({
         open: true,
@@ -1235,27 +1649,36 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       
       // Call outreach generation endpoint
       const formData = new FormData();
-      formData.append('company_id', selectedCompany.id.toString());
-      formData.append('outreach_type', outreachType);
+      formData.append("company_id", selectedCompany.id.toString());
+      formData.append("outreach_type", outreachType);
 
-      const response = await fetch('http://localhost:8000/api/outreach/generate', {
-        method: 'POST',
+      const response = await fetch(
+        "http://localhost:8000/api/outreach/generate",
+        {
+          method: "POST",
         headers: {
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
-        },
-        body: formData
-      });
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
+          },
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Outreach generation failed');
+        throw new Error(errorData.detail || "Outreach generation failed");
       }
 
       const result = await response.json();
       
       setNotification({
         open: true,
-        message: `${outreachType.charAt(0).toUpperCase() + outreachType.slice(1)} outreach generated successfully! Check your campaigns.`,
+        message: `${
+          outreachType.charAt(0).toUpperCase() + outreachType.slice(1)
+        } outreach generated successfully! Check your campaigns.`,
         severity: "success",
         companyId: null,
       });
@@ -1266,12 +1689,13 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       if (onNewCampaign) {
         onNewCampaign();
       }
-      
     } catch (error) {
       console.error(`Error generating ${outreachType} outreach:`, error);
       setNotification({
         open: true,
-        message: `Failed to generate ${outreachType} outreach: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to generate ${outreachType} outreach: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
         severity: "error",
         companyId: null,
       });
@@ -1283,28 +1707,51 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   // Function to load existing analysis and articles for a company
   const loadCompanyAnalysisAndArticles = async (companyId: number) => {
     try {
-      console.log(`📊 Loading analysis and articles for company ID: ${companyId}`);
-      
+      console.log(
+        `📊 Loading analysis and articles for company ID: ${companyId}`
+      );
+
       // Fetch company details (includes company_info, strengths, opportunities)
-      const companyResponse = await fetch(`http://localhost:8000/api/inspire/companies/${companyId}`, {
-        headers: {
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+      const companyResponse = await fetch(
+        `http://localhost:8000/api/inspire/companies/${companyId}`,
+        {
+          headers: {
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
+          },
         }
-      });
+      );
       
       // Fetch latest analysis
-      const analysisResponse = await fetch(`http://localhost:8000/api/inspire/companies/${companyId}/analysis`, {
+      const analysisResponse = await fetch(
+        `http://localhost:8000/api/inspire/companies/${companyId}/analysis`,
+        {
         headers: {
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
         }
-      });
+              : {}),
+          },
+        }
+      );
 
       // Fetch articles grouped by classification
-      const articlesResponse = await fetch(`http://localhost:8000/api/inspire/companies/${companyId}/articles`, {
+      const articlesResponse = await fetch(
+        `http://localhost:8000/api/inspire/companies/${companyId}/articles`,
+        {
         headers: {
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
+          },
         }
-      });
+      );
 
       // Process company data (includes company_info, strengths, opportunities)
       if (companyResponse.ok) {
@@ -1312,18 +1759,18 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         if (companyResult.success && companyResult.data) {
           const companyData = companyResult.data;
           console.log("✅ Company data loaded:", companyData);
-          
+
           // Extract and format company_info, strengths, and opportunities
           let companyInfoText = "";
           let strengthsArray: string[] = [];
           let opportunitiesArray: string[] = [];
-          
+
           // Parse company_info (JSON string)
           if (companyData.company_info) {
             try {
               const companyInfoData = JSON.parse(companyData.company_info);
               if (companyInfoData.description) {
-                if (typeof companyInfoData.description === 'string') {
+                if (typeof companyInfoData.description === "string") {
                   companyInfoText = companyInfoData.description;
                 } else if (companyInfoData.description.sentence1) {
                   // Format as 5 sentences
@@ -1332,22 +1779,27 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                     companyInfoData.description.sentence2,
                     companyInfoData.description.sentence3,
                     companyInfoData.description.sentence4,
-                    companyInfoData.description.sentence5
-                  ].filter(s => s && s.trim()).join(" ");
+                    companyInfoData.description.sentence5,
+                  ]
+                    .filter((s) => s && s.trim())
+                    .join(" ");
                   companyInfoText = sentences || companyInfoText;
                 }
               }
             } catch (e) {
-              console.error('Error parsing company_info:', e);
+              console.error("Error parsing company_info:", e);
               companyInfoText = companyData.company_info;
             }
           }
-          
+
           // Parse strengths (JSON string)
           if (companyData.strengths) {
             try {
               const strengthsData = JSON.parse(companyData.strengths);
-              if (strengthsData.strengths && Array.isArray(strengthsData.strengths)) {
+              if (
+                strengthsData.strengths &&
+                Array.isArray(strengthsData.strengths)
+              ) {
                 strengthsArray = strengthsData.strengths.map((s: any) => {
                   const strengthText = s.strength || "";
                   const evidenceText = s.evidence ? ` (${s.evidence})` : "";
@@ -1355,37 +1807,53 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 });
               }
             } catch (e) {
-              console.error('Error parsing strengths:', e);
+              console.error("Error parsing strengths:", e);
               // Fallback: try to split as plain text
-              strengthsArray = companyData.strengths.split(/\n|•|\*/).filter(s => s.trim()).map(s => s.trim());
+              strengthsArray = companyData.strengths
+                .split(/\n|•|\*/)
+                .filter((s) => s.trim())
+                .map((s) => s.trim());
             }
           }
-          
+
           // Parse opportunities (JSON string)
           if (companyData.opportunities) {
             try {
               const opportunitiesData = JSON.parse(companyData.opportunities);
-              if (opportunitiesData.opportunities && Array.isArray(opportunitiesData.opportunities)) {
-                opportunitiesArray = opportunitiesData.opportunities.map((o: any) => {
-                  const oppText = o.opportunity || "";
-                  const basisText = o.basis ? ` - ${o.basis}` : "";
-                  return `${oppText}${basisText}`;
-                });
+              if (
+                opportunitiesData.opportunities &&
+                Array.isArray(opportunitiesData.opportunities)
+              ) {
+                opportunitiesArray = opportunitiesData.opportunities.map(
+                  (o: any) => {
+                    const oppText = o.opportunity || "";
+                    const basisText = o.basis ? ` - ${o.basis}` : "";
+                    return `${oppText}${basisText}`;
+                  }
+                );
               }
             } catch (e) {
-              console.error('Error parsing opportunities:', e);
+              console.error("Error parsing opportunities:", e);
               // Fallback: try to split as plain text
-              opportunitiesArray = companyData.opportunities.split(/\n|•|\*/).filter(s => s.trim()).map(s => s.trim());
+              opportunitiesArray = companyData.opportunities
+                .split(/\n|•|\*/)
+                .filter((s) => s.trim())
+                .map((s) => s.trim());
             }
           }
-          
+
           // Update AI description with company data
           // Only update if we have real data (from backend), don't fallback to dummy data
-          if (companyInfoText || strengthsArray.length > 0 || opportunitiesArray.length > 0) {
+          if (
+            companyInfoText ||
+            strengthsArray.length > 0 ||
+            opportunitiesArray.length > 0
+          ) {
             setAiDescription({
               summary: companyInfoText,
               strengths: strengthsArray.length > 0 ? strengthsArray : [],
-              opportunities: opportunitiesArray.length > 0 ? opportunitiesArray : [],
+              opportunities:
+                opportunitiesArray.length > 0 ? opportunitiesArray : [],
               isLoading: false,
             });
           } else {
@@ -1408,32 +1876,32 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           console.log("✅ Analysis loaded:", analysisData);
           
           // Update selectedCompany with analysis data
-          setSelectedCompany(prev => ({
+          setSelectedCompany((prev) => ({
             ...prev!,
             insights: [
               {
                 question: "What are the latest company updates?",
-                points: [analysisData.latest_updates || ""]
+                points: [analysisData.latest_updates || ""],
               },
               {
                 question: "What are the company's challenges?",
-                points: [analysisData.challenges || ""]
+                points: [analysisData.challenges || ""],
               },
               {
                 question: "Who are the key decision-makers?",
-                points: [analysisData.decision_makers || ""]
+                points: [analysisData.decision_makers || ""],
               },
               {
                 question: "How does the company position itself?",
-                points: [analysisData.market_position || ""]
+                points: [analysisData.market_position || ""],
               },
               {
                 question: "What are the company's future plans?",
-                points: [analysisData.future_plans || ""]
-              }
+                points: [analysisData.future_plans || ""],
+              },
             ],
             actionPlan: analysisData.action_plan || "",
-            suggestedSolutions: analysisData.solutions || ""
+            suggestedSolutions: analysisData.solutions || "",
           }));
         }
       }
@@ -1441,48 +1909,61 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       // Process articles if exists
       if (articlesResponse.ok) {
         const articlesResult = await articlesResponse.json();
-        if (articlesResult.success && articlesResult.data && articlesResult.data.articles) {
+        if (
+          articlesResult.success &&
+          articlesResult.data &&
+          articlesResult.data.articles
+        ) {
           const articles = articlesResult.data.articles;
           console.log("✅ Articles loaded:", articles);
           
           // Update selectedCompany with articles data
-          setSelectedCompany(prev => ({
+          setSelectedCompany((prev) => ({
             ...prev!,
             articles: {
               directly_relevant: articles.directly_relevant || [],
               indirectly_useful: articles.indirectly_useful || [],
-              not_relevant: articles.not_relevant || []
-            }
+              not_relevant: articles.not_relevant || [],
+            },
           }));
         }
       }
-      
     } catch (error) {
-      console.error('Error loading company analysis and articles:', error);
+      console.error("Error loading company analysis and articles:", error);
     }
   };
 
   // Function to update company via API
-  const handleUpdateCompany = async (companyId: number, companyData: Partial<Company>) => {
+  const handleUpdateCompany = async (
+    companyId: number,
+    companyData: Partial<Company>
+  ) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/inspire/companies/${companyId}`, {
-        method: 'PUT',
+      const response = await fetch(
+        `http://localhost:8000/api/inspire/companies/${companyId}`,
+        {
+          method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+            "Content-Type": "application/json",
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
         },
         body: JSON.stringify({
           name: companyData.companyName,
           location: companyData.location,
           industry: companyData.industry,
-          website: companyData.website || '',
-          description: '',
-          sme_id: user?.sme_id
-        })
-      });
+            website: companyData.website || "",
+            description: "",
+            sme_id: user?.sme_id,
+          }),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to update company');
+        throw new Error("Failed to update company");
       }
 
       // Reload companies to get updated data
@@ -1496,7 +1977,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         companyId: null,
       });
     } catch (error) {
-      console.error('Error updating company:', error);
+      console.error("Error updating company:", error);
       setNotification({
         open: true,
         message: "Failed to update company",
@@ -1550,11 +2031,17 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       const sme_id = user.sme_id;
 
       // 1. Create the company in the backend
-      const response = await fetch('http://localhost:8000/api/inspire/companies', {
-        method: 'POST',
+      const response = await fetch(
+        "http://localhost:8000/api/inspire/companies",
+        {
+          method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+            "Content-Type": "application/json",
+            ...(localStorage.getItem("auth_token")
+              ? {
+                  Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                }
+              : {}),
         },
         body: JSON.stringify({
           name: addCompanyForm.name,
@@ -1562,94 +2049,135 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           industry: addCompanyForm.industry,
           website: addCompanyForm.website,
           description: addCompanyForm.description,
-          sme_id: sme_id
-        })
-      });
+            sme_id: sme_id,
+          }),
+        }
+      );
       if (!response.ok) {
-        throw new Error('Failed to create company');
+        throw new Error("Failed to create company");
       }
       const result = await response.json();
       const newCompanyId = result.data?.company_id || result.data?.id;
       if (!newCompanyId) {
-        throw new Error('No company ID returned from backend');
+        throw new Error("No company ID returned from backend");
       }
       // Add new company to in-memory state as 'loading'
       const newCompany = {
         id: newCompanyId,
         companyName: addCompanyForm.name,
-        location: addCompanyForm.location || '',
-        industry: addCompanyForm.industry || '',
-        website: addCompanyForm.website || '',
-        description: addCompanyForm.description || '',
-        updates: 'loading' as "loading",
+        location: addCompanyForm.location || "",
+        industry: addCompanyForm.industry || "",
+        website: addCompanyForm.website || "",
+        description: addCompanyForm.description || "",
+        updates: "loading" as "loading",
         assets: [],
-        activeAssets: '0',
-        productFamily: 'General',
-        exitRate: '0.00',
-        logoSrc: '/images/avatar.png',
+        activeAssets: "0",
+        productFamily: "General",
+        exitRate: "0.00",
+        logoSrc: "/images/avatar.png",
         color: stringToColor(addCompanyForm.name),
       };
-      setCompanies(prev => [...prev, newCompany]);
+      setCompanies((prev) => [...prev, newCompany]);
       handleCloseAddCompany();
-      setNotification({ open: true, message: "Company added. Analysis starting...", severity: "info", companyId: newCompanyId });
+      setNotification({
+        open: true,
+        message: "Company added. Analysis starting...",
+        severity: "info",
+        companyId: newCompanyId,
+      });
 
       // 2. Trigger unified analysis in background (non-blocking)
       const triggerAnalysis = async () => {
       try {
         const formData = new FormData();
-        formData.append('company_name', addCompanyForm.name);
-        formData.append('company_location', addCompanyForm.location);
-        formData.append('sme_id', String(sme_id));
-        formData.append('sme_objective', user.objective || '');
-        formData.append('max_articles', '100');
-        formData.append('company_id', String(newCompanyId)); // Pass the newly created company ID
-          
-        const analysisResponse = await fetch('http://localhost:8000/api/v1/unified/unified-analysis', {
-          method: 'POST',
+          formData.append("company_name", addCompanyForm.name);
+          formData.append("company_location", addCompanyForm.location);
+          formData.append("sme_id", String(sme_id));
+          formData.append("sme_objective", user.objective || "");
+          formData.append("max_articles", "100");
+          formData.append("company_id", String(newCompanyId)); // Pass the newly created company ID
+          const backgroundJobId = `analysis-${newCompanyId}-${Date.now()}`;
+          formData.append("job_id", backgroundJobId);
+
+          startAnalysisProgressPolling(backgroundJobId, newCompanyId);
+
+          const analysisResponse = await fetch(
+            "http://localhost:8000/api/v1/unified/unified-analysis",
+            {
+              method: "POST",
           headers: {
-            ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
-          },
-          body: formData
-        });
-          
+                ...(localStorage.getItem("auth_token")
+                  ? {
+                      Authorization: `Bearer ${localStorage.getItem(
+                        "auth_token"
+                      )}`,
+                    }
+                  : {}),
+              },
+              body: formData,
+            }
+          );
+
         if (!analysisResponse.ok) {
-          throw new Error('Analysis failed');
+            throw new Error("Analysis failed");
         }
-          
+
         const analysisData = await analysisResponse.json();
-          
+
           // Update company status to completed
-        setCompanies(prev => prev.map(c => c.id === newCompanyId ? {
+          setCompanies((prev) =>
+            prev.map((c) =>
+              c.id === newCompanyId
+                ? {
           ...c,
-          updates: 'completed' as "completed",
-          analysis: analysisData.data
-        } : c));
-          
-          setNotification({ 
-            open: true, 
-            message: `Analysis completed for ${addCompanyForm.name}!`, 
-            severity: "success", 
-            companyId: newCompanyId 
+                    updates: "completed" as "completed",
+                    analysis: analysisData.data,
+                  }
+                : c
+            )
+          );
+          clearAnalysisProgress(
+            "completed",
+            newCompanyId,
+            `Analysis completed for ${addCompanyForm.name}.`
+          );
+
+          setNotification({
+            open: true,
+            message: `Analysis completed for ${addCompanyForm.name}!`,
+            severity: "success",
+            companyId: newCompanyId,
           });
       } catch (analysisErr) {
-          console.error('Analysis error:', analysisErr);
-          setCompanies(prev => prev.map(c => c.id === newCompanyId ? { 
-            ...c, 
-            updates: 'failed' as "failed" 
-          } : c));
-          setNotification({ 
-            open: true, 
-            message: `Analysis failed for ${addCompanyForm.name}.`, 
-            severity: "error", 
-            companyId: newCompanyId 
+          console.error("Analysis error:", analysisErr);
+          setCompanies((prev) =>
+            prev.map((c) =>
+              c.id === newCompanyId
+                ? {
+                    ...c,
+                    updates: "failed" as "failed",
+                  }
+                : c
+            )
+          );
+          clearAnalysisProgress(
+            "failed",
+            newCompanyId,
+            `Analysis failed for ${addCompanyForm.name}.`
+          );
+          setNotification({
+            open: true,
+            message: `Analysis failed for ${addCompanyForm.name}.`,
+            severity: "error",
+            companyId: newCompanyId,
           });
-      }
+        }
       };
-      
+
       // Start analysis in background (non-blocking)
       triggerAnalysis();
     } catch (error) {
-      console.error('Error creating company:', error);
+      console.error("Error creating company:", error);
       setNotification({
         open: true,
         message: "Failed to add company. Please try again.",
@@ -1849,7 +2377,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     if (tabValue === 3)
       // Processing includes both "loading" and "pending" statuses
       return filteredCompanies.filter(
-        (company) => company.updates === "loading" || company.updates === "pending"
+        (company) =>
+          company.updates === "loading" || company.updates === "pending"
       );
     return filteredCompanies;
   };
@@ -1946,7 +2475,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       try {
         await loadCompanyAnalysisAndArticles(company.id);
       } catch (error) {
-        console.error('Error loading company data:', error);
+        console.error("Error loading company data:", error);
         // Only generate dummy data if loading fails
         generateAIDescription(company);
       }
@@ -2006,16 +2535,25 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         try {
           // Delete each company via API
           for (const companyId of selectedCompanies) {
-            const response = await fetch(`http://localhost:8000/api/inspire/companies/${companyId}`, {
-              method: 'DELETE',
+            const response = await fetch(
+              `http://localhost:8000/api/inspire/companies/${companyId}`,
+              {
+                method: "DELETE",
               headers: {
-                'Content-Type': 'application/json',
-                ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+                  "Content-Type": "application/json",
+                  ...(localStorage.getItem("auth_token")
+                    ? {
+                        Authorization: `Bearer ${localStorage.getItem(
+                          "auth_token"
+                        )}`,
+                      }
+                    : {}),
+                },
               }
-            });
+            );
 
             if (!response.ok) {
-              throw new Error('Failed to delete company');
+              throw new Error("Failed to delete company");
             }
           }
           
@@ -2031,7 +2569,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             companyId: null,
           });
         } catch (error) {
-          console.error('Error deleting companies:', error);
+          console.error("Error deleting companies:", error);
           setNotification({
             open: true,
             message: "Failed to delete companies",
@@ -2043,16 +2581,25 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     } else if (companyToDelete) {
       // Delete single company
       try {
-        const response = await fetch(`http://localhost:8000/api/inspire/companies/${companyToDelete}`, {
-          method: 'DELETE',
+        const response = await fetch(
+          `http://localhost:8000/api/inspire/companies/${companyToDelete}`,
+          {
+            method: "DELETE",
           headers: {
-            'Content-Type': 'application/json',
-            ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
+              "Content-Type": "application/json",
+              ...(localStorage.getItem("auth_token")
+                ? {
+                    Authorization: `Bearer ${localStorage.getItem(
+                      "auth_token"
+                    )}`,
+                  }
+                : {}),
+            },
           }
-        });
+        );
 
         if (!response.ok) {
-          throw new Error('Failed to delete company');
+          throw new Error("Failed to delete company");
         }
 
         // Reload companies list from API
@@ -2072,7 +2619,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           companyId: null,
         });
       } catch (error) {
-        console.error('Error deleting company:', error);
+        console.error("Error deleting company:", error);
         setNotification({
           open: true,
           message: "Failed to delete company",
@@ -2113,10 +2660,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     setAiDescription((prev) => {
       // If we already have real data (non-empty summary with actual content), don't overwrite
       if (prev.summary && prev.summary.length > 50 && !prev.isLoading) {
-        console.log('Skipping dummy data generation - real data already exists');
+        console.log(
+          "Skipping dummy data generation - real data already exists"
+        );
         return prev;
       }
-      
+
       // Otherwise, reset and generate dummy data
       return {
       summary: "",
@@ -2132,32 +2681,35 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       setAiDescription((prev) => {
         // If real data exists now (non-empty summary that's not generic), don't overwrite with dummy data
         // Real data is usually longer and more specific, not generic like "X is a Y company"
-        const hasRealData = prev.summary && 
-                            prev.summary.length > 100 && 
-                            !prev.summary.includes('is a') &&
-                            !prev.summary.includes('They are focused on growth') &&
-                            !prev.isLoading;
-        
+        const hasRealData =
+          prev.summary &&
+          prev.summary.length > 100 &&
+          !prev.summary.includes("is a") &&
+          !prev.summary.includes("They are focused on growth") &&
+          !prev.isLoading;
+
         if (hasRealData) {
-          console.log('Skipping dummy data - real data loaded during timeout');
+          console.log("Skipping dummy data - real data loaded during timeout");
           return prev;
         }
-        
+
         // Also check if we have real strengths/opportunities (non-generic)
-        const hasRealStrengths = prev.strengths && 
-                                 prev.strengths.length > 0 && 
-                                 !prev.strengths[0].includes('Strong presence in the') &&
-                                 !prev.strengths[0].includes('Established operations');
-        
-        const hasRealOpportunities = prev.opportunities && 
-                                     prev.opportunities.length > 0 && 
-                                     !prev.opportunities[0].includes('Explore new market opportunities');
-        
+        const hasRealStrengths =
+          prev.strengths &&
+          prev.strengths.length > 0 &&
+          !prev.strengths[0].includes("Strong presence in the") &&
+          !prev.strengths[0].includes("Established operations");
+
+        const hasRealOpportunities =
+          prev.opportunities &&
+          prev.opportunities.length > 0 &&
+          !prev.opportunities[0].includes("Explore new market opportunities");
+
         if (hasRealStrengths || hasRealOpportunities) {
-          console.log('Skipping dummy data - real data detected');
+          console.log("Skipping dummy data - real data detected");
           return prev;
         }
-        
+
       // Generate description based on company data
       const industry = company.industry;
       const location = company.location;
@@ -2191,8 +2743,6 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       });
     }, 1500); // Simulate 1.5 second delay for API call
   };
-
-
 
   const handleAccountMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAccountMenuAnchor(event.currentTarget);
@@ -2281,9 +2831,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
   const handleOutreachTypeSelect = (type: "email" | "call" | "meeting") => {
     // Get the outreach button element for animation start point
-    const outreachButton = document.getElementById('generate-outreach-button');
+    const outreachButton = document.getElementById("generate-outreach-button");
     // Get the campaigns nav button for animation end point
-    const campaignsNavButton = document.getElementById('campaigns-nav-button');
+    const campaignsNavButton = document.getElementById("campaigns-nav-button");
     
     if (outreachButton && campaignsNavButton) {
       setAnimationStartElement(outreachButton);
@@ -2763,7 +3313,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             overflowY: "auto",
           }}
         >
-          {companies.map((company, index) => (
+          {companies.map((company, index) => {
+            const companyProgress =
+              company.updates === "loading"
+                ? analysisProgressByCompany[company.id]
+                : null;
+            return (
             <React.Fragment key={company.id}>
               <AccountListItem
                 onClick={() => handleCompanySelect(company)}
@@ -2812,7 +3367,48 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       {company.industry}
                     </Typography>
                   </Box>
-                  <StatusLabel status={company.updates} />
+                  <StatusLabel
+                    status={company.updates}
+                    sx={{ minWidth: 100, justifyContent: "center" }}
+                  >
+                    {company.updates === "loading" ? (
+                      <>
+                        <CircularProgress
+                          size={12}
+                          thickness={4}
+                          variant={
+                            companyProgress ? "determinate" : "indeterminate"
+                          }
+                          {...(companyProgress
+                            ? {
+                                value: Math.max(
+                                  0,
+                                  Math.min(
+                                    100,
+                                companyProgress.display || 0
+                                  )
+                                ),
+                              }
+                            : {})}
+                          sx={{ mr: 0.75 }}
+                        />
+                        {companyProgress
+                          ? `Processing ${Math.round(
+                          companyProgress.display
+                            )}%`
+                          : "Processing"}
+                      </>
+                    ) : company.updates === "completed" ? (
+                      "Analysis Complete"
+                    ) : company.updates === "failed" ? (
+                      "Analysis Failed"
+                    ) : company.updates === "pending" ? (
+                      "Pending"
+                    ) : (
+                      company.updates.charAt(0).toUpperCase() +
+                      company.updates.slice(1)
+                    )}
+                  </StatusLabel>
                   {bookmarked.includes(company.id) && (
                     <BookmarkIcon
                       sx={{
@@ -2826,7 +3422,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               </AccountListItem>
               {index < companies.length - 1 && <Divider />}
             </React.Fragment>
-          ))}
+            );
+          })}
         </Paper>
       </>
     );
@@ -2838,6 +3435,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     const companyColor =
       selectedCompany.color || stringToColor(selectedCompany.companyName);
     const companyInitials = getInitials(selectedCompany.companyName);
+    const selectedCompanyProgress =
+      selectedCompany.id &&
+      analysisProgressByCompany[selectedCompany.id] &&
+      selectedCompany.updates === "loading"
+        ? analysisProgressByCompany[selectedCompany.id]
+        : null;
 
     return (
       <AnimatedContainer sx={{ width: "100%" }}>
@@ -2845,37 +3448,67 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         {analyzingCompany && (
           <Box
             sx={{
-              position: 'fixed',
+              position: "fixed",
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               zIndex: 9999,
             }}
           >
             <Paper
               sx={{
                 p: 4,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
                 gap: 3,
                 minWidth: 320,
               }}
             >
-              <CircularProgress size={50} />
+              <CircularProgress
+                size={64}
+                thickness={5}
+                variant="determinate"
+                value={Math.max(0, Math.min(100, analysisProgress))}
+              />
               <Typography variant="h6" fontWeight={600}>
                 Analyzing Company
               </Typography>
-              <Typography variant="body2" color="text.secondary" textAlign="center">
-                Fetching articles, classifying, and running analysis...
-                <br />
-                This may take a few moments.
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                textAlign="center"
+                sx={{ mb: 1 }}
+              >
+                {analysisStatusMessage}
               </Typography>
+              <Box sx={{ width: "100%" }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.max(0, Math.min(100, analysisProgress))}
+                  sx={{
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: "rgba(0,0,0,0.08)",
+                    "& .MuiLinearProgress-bar": {
+                      borderRadius: 4,
+                    },
+                  }}
+                />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", textAlign: "center", mt: 1 }}
+                >
+                  {Math.round(Math.max(0, Math.min(100, analysisProgress)))}%
+                  complete
+                </Typography>
+              </Box>
             </Paper>
           </Box>
         )}
@@ -2983,7 +3616,13 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
                   <Button
                     variant="contained"
-                    startIcon={analyzingCompany ? <CircularProgress size={16} color="inherit" /> : <AnalyticsIcon />}
+                    startIcon={
+                      analyzingCompany ? (
+                        <CircularProgress size={16} color="inherit" />
+                      ) : (
+                        <AnalyticsIcon />
+                      )
+                    }
                     onClick={handleAnalyzeCompany}
                     disabled={analyzingCompany}
                     sx={{
@@ -3010,8 +3649,16 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                   <Button
                     id="generate-outreach-button"
                     variant="outlined"
-                    startIcon={generatingOutreach ? <CircularProgress size={16} color="inherit" /> : <MessageIcon />}
-                    onClick={(event) => setOutreachMenuAnchor(event.currentTarget)}
+                    startIcon={
+                      generatingOutreach ? (
+                        <CircularProgress size={16} color="inherit" />
+                      ) : (
+                        <MessageIcon />
+                      )
+                    }
+                    onClick={(event) =>
+                      setOutreachMenuAnchor(event.currentTarget)
+                    }
                     disabled={generatingOutreach !== null}
                     sx={{
                       borderRadius: "6px",
@@ -3033,7 +3680,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       },
                     }}
                   >
-                    {generatingOutreach ? `Generating ${generatingOutreach}...` : "Generate Outreach"}
+                    {generatingOutreach
+                      ? `Generating ${generatingOutreach}...`
+                      : "Generate Outreach"}
                     <ExpandMoreIcon sx={{ ml: 0.5, fontSize: 16 }} />
                   </Button>
 
@@ -3057,7 +3706,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       onClick={handleDeleteCompanyFromMenu}
                       sx={{ color: "error.main" }}
                     >
-                      <DeleteIcon sx={{ mr: 1.5, fontSize: 20, color: "error.main" }} />
+                      <DeleteIcon
+                        sx={{ mr: 1.5, fontSize: 20, color: "error.main" }}
+                      />
                       Delete Company
                     </MenuItem>
                   </Menu>
@@ -3088,13 +3739,15 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                         opacity: generatingOutreach !== null ? 0.6 : 1,
                       }}
                     >
-                      {generatingOutreach === 'email' ? (
+                      {generatingOutreach === "email" ? (
                         <CircularProgress size={18} sx={{ color: "#4caf50" }} />
                       ) : (
                         <EmailIcon sx={{ fontSize: 18, color: "#4caf50" }} />
                       )}
                       <Typography variant="body2" fontWeight={500}>
-                        {generatingOutreach === 'email' ? 'Generating...' : 'Email'}
+                        {generatingOutreach === "email"
+                          ? "Generating..."
+                          : "Email"}
                               </Typography>
                     </MenuItem>
                     <MenuItem 
@@ -3109,13 +3762,15 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                         opacity: generatingOutreach !== null ? 0.6 : 1,
                       }}
                     >
-                      {generatingOutreach === 'call' ? (
+                      {generatingOutreach === "call" ? (
                         <CircularProgress size={18} sx={{ color: "#ff9800" }} />
                       ) : (
                         <CallIcon sx={{ fontSize: 18, color: "#ff9800" }} />
                       )}
                       <Typography variant="body2" fontWeight={500}>
-                        {generatingOutreach === 'call' ? 'Generating...' : 'Call'}
+                        {generatingOutreach === "call"
+                          ? "Generating..."
+                          : "Call"}
                               </Typography>
                     </MenuItem>
                     <MenuItem 
@@ -3130,13 +3785,17 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                         opacity: generatingOutreach !== null ? 0.6 : 1,
                       }}
                     >
-                      {generatingOutreach === 'meeting' ? (
+                      {generatingOutreach === "meeting" ? (
                         <CircularProgress size={18} sx={{ color: "#9c27b0" }} />
                       ) : (
-                        <MeetingRoomIcon sx={{ fontSize: 18, color: "#9c27b0" }} />
+                        <MeetingRoomIcon
+                          sx={{ fontSize: 18, color: "#9c27b0" }}
+                        />
                       )}
                       <Typography variant="body2" fontWeight={500}>
-                        {generatingOutreach === 'meeting' ? 'Generating...' : 'Meeting'}
+                        {generatingOutreach === "meeting"
+                          ? "Generating..."
+                          : "Meeting"}
                     </Typography>
                     </MenuItem>
                   </Menu>
@@ -3149,9 +3808,27 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                     <CircularProgress
                       size={14}
                       thickness={4}
+                      variant={
+                        selectedCompanyProgress ? "determinate" : "indeterminate"
+                      }
+                      {...(selectedCompanyProgress
+                        ? {
+                            value: Math.max(
+                              0,
+                              Math.min(
+                                100,
+                                selectedCompanyProgress.display || 0
+                              )
+                            ),
+                          }
+                        : {})}
                       sx={{ mr: 0.75 }}
                     />
-                    Processing
+                    {selectedCompanyProgress
+                      ? `Processing ${Math.round(
+                          selectedCompanyProgress.display
+                        )}%`
+                      : "Processing"}
                   </StatusLabel>
                 ) : (
                   <StatusLabel status={selectedCompany.updates}>
@@ -3402,7 +4079,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               </Box>
               
               <Box sx={{ p: 3 }}>
-                {(selectedCompany.insights || mockInsights).map((insight, index) => (
+                  {(selectedCompany.insights || mockInsights).map(
+                    (insight, index) => (
                   <Paper 
                     key={index} 
                     elevation={0} 
@@ -3444,242 +4122,375 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                     </Box>
                     <Collapse in={expandedInsights.includes(index)}>
                       <Box sx={{ px: 2, pb: 2 }}>
-                        {(() => {
-                          // Parse JSON strings from points
-                          const formattedPoints: string[] = [];
-                          
-                          insight.points.forEach((point) => {
-                            if (!point || (typeof point === 'string' && point.trim() === '')) return;
-                            
-                            // Format based on question type (case-insensitive check)
-                            const questionLower = insight.question.toLowerCase();
-                            
-                            // Handle "latest updates" question specifically - match any variation
-                            if (questionLower.includes('latest update') || questionLower.includes('latest company update')) {
-                              // Always try to extract using regex first for latest updates - this is most reliable
-                              if (typeof point === 'string' && point.trim().length > 0) {
-                                const trimmedPoint = point.trim();
-                                
-                                // Try multiple regex patterns to ensure we catch all cases
-                                // Pattern 1: Match "update": "text" with proper escaping (handles escaped quotes)
-                                let updatePattern = /"update"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
-                                let match;
-                                let foundUpdates: string[] = [];
-                                
-                                updatePattern.lastIndex = 0;
-                                while ((match = updatePattern.exec(trimmedPoint)) !== null) {
-                                  if (match[1]) {
-                                    const unescaped = match[1]
-                                      .replace(/\\"/g, '"')
-                                      .replace(/\\n/g, '\n')
-                                      .replace(/\\t/g, '\t')
-                                      .replace(/\\r/g, '\r')
-                                      .replace(/\\\\/g, '\\');
-                                    if (unescaped.trim().length > 0) {
-                                      foundUpdates.push(unescaped.trim());
-                                    }
-                                  }
-                                }
-                                
-                                // Pattern 2: Simpler pattern - match text between quotes after "update":
-                                // This pattern matches: "update": "text" where text can contain escaped quotes
-                                if (foundUpdates.length === 0) {
-                                  updatePattern = /"update"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
-                                  updatePattern.lastIndex = 0;
-                                  while ((match = updatePattern.exec(trimmedPoint)) !== null) {
-                                    if (match[1]) {
-                                      const unescaped = match[1]
-                                        .replace(/\\"/g, '"')
-                                        .replace(/\\n/g, '\n')
-                                        .replace(/\\t/g, '\t')
-                                        .replace(/\\r/g, '\r')
-                                        .replace(/\\\\/g, '\\');
-                                      if (unescaped.trim().length > 0) {
-                                        foundUpdates.push(unescaped.trim());
+                            {(() => {
+                              // Parse JSON strings from points
+                              const formattedPoints: string[] = [];
+
+                              insight.points.forEach((point) => {
+                                if (
+                                  !point ||
+                                  (typeof point === "string" &&
+                                    point.trim() === "")
+                                )
+                                  return;
+
+                                // Format based on question type (case-insensitive check)
+                                const questionLower =
+                                  insight.question.toLowerCase();
+
+                                // Handle "latest updates" question specifically - match any variation
+                                if (
+                                  questionLower.includes("latest update") ||
+                                  questionLower.includes(
+                                    "latest company update"
+                                  )
+                                ) {
+                                  // Always try to extract using regex first for latest updates - this is most reliable
+                                  if (
+                                    typeof point === "string" &&
+                                    point.trim().length > 0
+                                  ) {
+                                    const trimmedPoint = point.trim();
+
+                                    // Try multiple regex patterns to ensure we catch all cases
+                                    // Pattern 1: Match "update": "text" with proper escaping (handles escaped quotes)
+                                    let updatePattern =
+                                      /"update"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+                                    let match;
+                                    let foundUpdates: string[] = [];
+
+                                    updatePattern.lastIndex = 0;
+                                    while (
+                                      (match =
+                                        updatePattern.exec(trimmedPoint)) !==
+                                      null
+                                    ) {
+                                      if (match[1]) {
+                                        const unescaped = match[1]
+                                          .replace(/\\"/g, '"')
+                                          .replace(/\\n/g, "\n")
+                                          .replace(/\\t/g, "\t")
+                                          .replace(/\\r/g, "\r")
+                                          .replace(/\\\\/g, "\\");
+                                        if (unescaped.trim().length > 0) {
+                                          foundUpdates.push(unescaped.trim());
+                                        }
                                       }
                                     }
-                                  }
-                                }
-                                
-                                // Pattern 3: Even simpler - match any text between quotes (non-greedy)
-                                if (foundUpdates.length === 0) {
-                                  // Try to match: "update": "anything here" with non-greedy matching
-                                  const simplePattern = /"update"\s*:\s*"((?:(?!",).)+?)"/g;
-                                  simplePattern.lastIndex = 0;
-                                  while ((match = simplePattern.exec(trimmedPoint)) !== null) {
-                                    if (match[1] && match[1].trim().length > 0) {
-                                      foundUpdates.push(match[1].trim());
+
+                                    // Pattern 2: Simpler pattern - match text between quotes after "update":
+                                    // This pattern matches: "update": "text" where text can contain escaped quotes
+                                    if (foundUpdates.length === 0) {
+                                      updatePattern =
+                                        /"update"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+                                      updatePattern.lastIndex = 0;
+                                      while (
+                                        (match =
+                                          updatePattern.exec(trimmedPoint)) !==
+                                        null
+                                      ) {
+                                        if (match[1]) {
+                                          const unescaped = match[1]
+                                            .replace(/\\"/g, '"')
+                                            .replace(/\\n/g, "\n")
+                                            .replace(/\\t/g, "\t")
+                                            .replace(/\\r/g, "\r")
+                                            .replace(/\\\\/g, "\\");
+                                          if (unescaped.trim().length > 0) {
+                                            foundUpdates.push(unescaped.trim());
+                                          }
+                                        }
+                                      }
+                                    }
+
+                                    // Pattern 3: Even simpler - match any text between quotes (non-greedy)
+                                    if (foundUpdates.length === 0) {
+                                      // Try to match: "update": "anything here" with non-greedy matching
+                                      const simplePattern =
+                                        /"update"\s*:\s*"((?:(?!",).)+?)"/g;
+                                      simplePattern.lastIndex = 0;
+                                      while (
+                                        (match =
+                                          simplePattern.exec(trimmedPoint)) !==
+                                        null
+                                      ) {
+                                        if (
+                                          match[1] &&
+                                          match[1].trim().length > 0
+                                        ) {
+                                          foundUpdates.push(match[1].trim());
+                                        }
+                                      }
+                                    }
+
+                                    if (foundUpdates.length > 0) {
+                                      foundUpdates.forEach((update) => {
+                                        if (
+                                          update &&
+                                          update.trim().length > 0
+                                        ) {
+                                          formattedPoints.push(update.trim());
+                                        }
+                                      });
+                                      // Return early if we found updates via regex
+                                      return;
+                                    }
+
+                                    // If regex didn't work, try JSON parsing as fallback
+                                    try {
+                                      const parsed = JSON.parse(trimmedPoint);
+                                      if (
+                                        parsed &&
+                                        parsed.updates &&
+                                        Array.isArray(parsed.updates)
+                                      ) {
+                                        parsed.updates.forEach(
+                                          (update: any) => {
+                                            if (
+                                              update &&
+                                              typeof update === "object" &&
+                                              update.update
+                                            ) {
+                                              formattedPoints.push(
+                                                String(update.update).trim()
+                                              );
+                                            }
+                                          }
+                                        );
+                                        if (formattedPoints.length > 0) return;
+                                      }
+                                    } catch (e) {
+                                      // JSON parse failed, continue
+                                    }
+
+                                    // If nothing worked, don't show raw JSON
+                                    return;
+                                  } else if (
+                                    typeof point === "object" &&
+                                    point !== null
+                                  ) {
+                                    // Already an object, try to extract directly
+                                    if (
+                                      point.updates &&
+                                      Array.isArray(point.updates)
+                                    ) {
+                                      point.updates.forEach((update: any) => {
+                                        if (
+                                          update &&
+                                          typeof update === "object" &&
+                                          update.update
+                                        ) {
+                                          formattedPoints.push(
+                                            String(update.update).trim()
+                                          );
+                                        }
+                                      });
+                                      if (formattedPoints.length > 0) return;
+                                    }
+                                    // Try nested structure
+                                    if (
+                                      point.data &&
+                                      point.data.updates &&
+                                      Array.isArray(point.data.updates)
+                                    ) {
+                                      point.data.updates.forEach(
+                                        (update: any) => {
+                                          if (
+                                            update &&
+                                            typeof update === "object" &&
+                                            update.update
+                                          ) {
+                                            formattedPoints.push(
+                                              String(update.update).trim()
+                                            );
+                                          }
+                                        }
+                                      );
+                                      if (formattedPoints.length > 0) return;
                                     }
                                   }
-                                }
-                                
-                                if (foundUpdates.length > 0) {
-                                  foundUpdates.forEach(update => {
-                                    if (update && update.trim().length > 0) {
-                                      formattedPoints.push(update.trim());
-                                    }
-                                  });
-                                  // Return early if we found updates via regex
+
+                                  // If all else fails, don't show raw JSON - just return without adding anything
+                                  // This prevents raw JSON from being displayed
                                   return;
                                 }
-                                
-                                // If regex didn't work, try JSON parsing as fallback
+
+                                // Handle other question types
                                 try {
-                                  const parsed = JSON.parse(trimmedPoint);
-                                  if (parsed && parsed.updates && Array.isArray(parsed.updates)) {
-                                    parsed.updates.forEach((update: any) => {
-                                      if (update && typeof update === 'object' && update.update) {
-                                        formattedPoints.push(String(update.update).trim());
+                                  // Try to parse as JSON (handle both string and already parsed objects)
+                                  let parsed;
+                                  if (typeof point === "string") {
+                                    // Check if it looks like JSON (starts with { or [)
+                                    const trimmedPoint = point.trim();
+                                    if (
+                                      trimmedPoint.startsWith("{") ||
+                                      trimmedPoint.startsWith("[")
+                                    ) {
+                                      try {
+                                        parsed = JSON.parse(trimmedPoint);
+                                      } catch (e) {
+                                        // JSON parsing failed, use as plain text
+                                        formattedPoints.push(point);
+                                        return;
                                       }
-                                    });
-                                    if (formattedPoints.length > 0) return;
+                                    } else {
+                                      // Not JSON format, use as plain text
+                                      formattedPoints.push(point);
+                                      return;
+                                    }
+                                  } else {
+                                    parsed = point;
+                                  }
+
+                                  // Process other question types (challenges, decision-makers, etc.)
+                                  if (questionLower.includes("challenge")) {
+                                    // Extract challenges
+                                    if (
+                                      parsed.challenges &&
+                                      Array.isArray(parsed.challenges)
+                                    ) {
+                                      parsed.challenges.forEach(
+                                        (challenge: any) => {
+                                          const challengeText =
+                                            challenge.challenge ||
+                                            String(challenge);
+                                          const impact = challenge.impact
+                                            ? ` (Impact: ${challenge.impact})`
+                                            : "";
+                                          formattedPoints.push(
+                                            `${challengeText}${impact}`
+                                          );
+                                        }
+                                      );
+                                    } else {
+                                      formattedPoints.push(String(point));
+                                    }
+                                  } else if (
+                                    questionLower.includes("decision-maker") ||
+                                    questionLower.includes("decision maker")
+                                  ) {
+                                    // Extract decision makers
+                                    if (
+                                      parsed &&
+                                      parsed.decision_makers &&
+                                      Array.isArray(parsed.decision_makers)
+                                    ) {
+                                      parsed.decision_makers.forEach(
+                                        (person: any) => {
+                                          const name = person.name || "";
+                                          const role = person.role
+                                            ? ` - ${person.role}`
+                                            : "";
+                                          formattedPoints.push(
+                                            `${name}${role}`
+                                          );
+                                        }
+                                      );
+                                    } else {
+                                      formattedPoints.push(String(point));
+                                    }
+                                  } else if (
+                                    questionLower.includes("position")
+                                  ) {
+                                    // Extract market position
+                                    if (parsed && parsed.description) {
+                                      formattedPoints.push(parsed.description);
+                                    }
+                                    if (
+                                      parsed &&
+                                      parsed.competitors &&
+                                      Array.isArray(parsed.competitors) &&
+                                      parsed.competitors.length > 0
+                                    ) {
+                                      formattedPoints.push(
+                                        `Competitors: ${parsed.competitors.join(
+                                          ", "
+                                        )}`
+                                      );
+                                    }
+                                    if (parsed && parsed.market_share) {
+                                      formattedPoints.push(
+                                        `Market Share: ${parsed.market_share}`
+                                      );
+                                    }
+                                    if (formattedPoints.length === 0 && point) {
+                                      formattedPoints.push(String(point));
+                                    }
+                                  } else if (
+                                    questionLower.includes("future plan")
+                                  ) {
+                                    // Extract future plans
+                                    if (
+                                      parsed &&
+                                      parsed.plans &&
+                                      Array.isArray(parsed.plans)
+                                    ) {
+                                      parsed.plans.forEach((plan: any) => {
+                                        const planText =
+                                          plan.plan || String(plan);
+                                        const timeline = plan.timeline
+                                          ? ` (Timeline: ${plan.timeline})`
+                                          : "";
+                                        formattedPoints.push(
+                                          `${planText}${timeline}`
+                                        );
+                                      });
+                                    } else {
+                                      formattedPoints.push(String(point));
+                                    }
+                                  } else {
+                                    // Fallback: use point as-is
+                                    formattedPoints.push(String(point));
                                   }
                                 } catch (e) {
-                                  // JSON parse failed, continue
+                                  // Not JSON, use as plain text
+                                  console.error(
+                                    "Error parsing insight point:",
+                                    e,
+                                    point
+                                  );
+                                  formattedPoints.push(String(point));
                                 }
-                                
-                                // If nothing worked, don't show raw JSON
-                                return;
-                              } else if (typeof point === 'object' && point !== null) {
-                                // Already an object, try to extract directly
-                                if (point.updates && Array.isArray(point.updates)) {
-                                  point.updates.forEach((update: any) => {
-                                    if (update && typeof update === 'object' && update.update) {
-                                      formattedPoints.push(String(update.update).trim());
-                                    }
-                                  });
-                                  if (formattedPoints.length > 0) return;
-                                }
-                                // Try nested structure
-                                if (point.data && point.data.updates && Array.isArray(point.data.updates)) {
-                                  point.data.updates.forEach((update: any) => {
-                                    if (update && typeof update === 'object' && update.update) {
-                                      formattedPoints.push(String(update.update).trim());
-                                    }
-                                  });
-                                  if (formattedPoints.length > 0) return;
-                                }
+                              });
+
+                              // Display as bullet points
+                              if (formattedPoints.length === 0) {
+                                return (
+                                  <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                    sx={{ fontStyle: "italic" }}
+                                  >
+                                    No information available
+                                  </Typography>
+                                );
                               }
-                              
-                              // If all else fails, don't show raw JSON - just return without adding anything
-                              // This prevents raw JSON from being displayed
-                              return;
-                            }
-                            
-                            // Handle other question types
-                            try {
-                              // Try to parse as JSON (handle both string and already parsed objects)
-                              let parsed;
-                              if (typeof point === 'string') {
-                                // Check if it looks like JSON (starts with { or [)
-                                const trimmedPoint = point.trim();
-                                if (trimmedPoint.startsWith('{') || trimmedPoint.startsWith('[')) {
-                                  try {
-                                    parsed = JSON.parse(trimmedPoint);
-                                  } catch (e) {
-                                    // JSON parsing failed, use as plain text
-                                    formattedPoints.push(point);
-                                    return;
-                                  }
-                                } else {
-                                  // Not JSON format, use as plain text
-                                  formattedPoints.push(point);
-                                  return;
-                                }
-                              } else {
-                                parsed = point;
-                              }
-                              
-                              // Process other question types (challenges, decision-makers, etc.)
-                              if (questionLower.includes('challenge')) {
-                                // Extract challenges
-                                if (parsed.challenges && Array.isArray(parsed.challenges)) {
-                                  parsed.challenges.forEach((challenge: any) => {
-                                    const challengeText = challenge.challenge || String(challenge);
-                                    const impact = challenge.impact ? ` (Impact: ${challenge.impact})` : '';
-                                    formattedPoints.push(`${challengeText}${impact}`);
-                                  });
-                                } else {
-                                  formattedPoints.push(String(point));
-                                }
-                              } else if (questionLower.includes('decision-maker') || questionLower.includes('decision maker')) {
-                                // Extract decision makers
-                                if (parsed && parsed.decision_makers && Array.isArray(parsed.decision_makers)) {
-                                  parsed.decision_makers.forEach((person: any) => {
-                                    const name = person.name || '';
-                                    const role = person.role ? ` - ${person.role}` : '';
-                                    formattedPoints.push(`${name}${role}`);
-                                  });
-                                } else {
-                                  formattedPoints.push(String(point));
-                                }
-                              } else if (questionLower.includes('position')) {
-                                // Extract market position
-                                if (parsed && parsed.description) {
-                                  formattedPoints.push(parsed.description);
-                                }
-                                if (parsed && parsed.competitors && Array.isArray(parsed.competitors) && parsed.competitors.length > 0) {
-                                  formattedPoints.push(`Competitors: ${parsed.competitors.join(', ')}`);
-                                }
-                                if (parsed && parsed.market_share) {
-                                  formattedPoints.push(`Market Share: ${parsed.market_share}`);
-                                }
-                                if (formattedPoints.length === 0 && point) {
-                                  formattedPoints.push(String(point));
-                                }
-                              } else if (questionLower.includes('future plan')) {
-                                // Extract future plans
-                                if (parsed && parsed.plans && Array.isArray(parsed.plans)) {
-                                  parsed.plans.forEach((plan: any) => {
-                                    const planText = plan.plan || String(plan);
-                                    const timeline = plan.timeline ? ` (Timeline: ${plan.timeline})` : '';
-                                    formattedPoints.push(`${planText}${timeline}`);
-                                  });
-                                } else {
-                                  formattedPoints.push(String(point));
-                                }
-                              } else {
-                                // Fallback: use point as-is
-                                formattedPoints.push(String(point));
-                              }
-                            } catch (e) {
-                              // Not JSON, use as plain text
-                              console.error('Error parsing insight point:', e, point);
-                              formattedPoints.push(String(point));
-                            }
-                          });
-                          
-                          // Display as bullet points
-                          if (formattedPoints.length === 0) {
-                            return (
-                              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                No information available
-                              </Typography>
-                            );
-                          }
-                          
-                          return (
-                            <List dense sx={{ pl: 2, mt: 0 }}>
-                              {formattedPoints.map((point, i) => (
-                                <ListItem
-                                  key={i}
-                                  sx={{
-                                    display: "list-item",
-                                    listStyleType: "disc",
-                                    pl: 0,
-                                    py: 0.5,
-                                  }}
-                                >
-                                  <Typography variant="body2">{point}</Typography>
-                                </ListItem>
-                              ))}
-                            </List>
-                          );
-                        })()}
+
+                              return (
+                        <List dense sx={{ pl: 2, mt: 0 }}>
+                                  {formattedPoints.map((point, i) => (
+                              <ListItem
+                                key={i}
+                                sx={{
+                                  display: "list-item",
+                                  listStyleType: "disc",
+                                  pl: 0,
+                                  py: 0.5,
+                                }}
+                              >
+                                      <Typography variant="body2">
+                                        {point}
+                                      </Typography>
+                            </ListItem>
+                          ))}
+                        </List>
+                              );
+                            })()}
                       </Box>
                     </Collapse>
                   </Paper>
-                ))}
+                    )
+                  )}
               </Box>
             </Paper>
             </Box>
@@ -3699,125 +4510,152 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                   Suggested Solutions to Pitch
                 </Typography>
 
-                {selectedCompany.suggestedSolutions ? (
-                  (() => {
-                    try {
-                      const solutionsData = typeof selectedCompany.suggestedSolutions === 'string' 
-                        ? JSON.parse(selectedCompany.suggestedSolutions) 
-                        : selectedCompany.suggestedSolutions;
-                      
-                      const solutions = solutionsData?.solutions || [];
-                      
-                      if (solutions.length === 0) {
+                {selectedCompany.suggestedSolutions
+                  ? (() => {
+                      try {
+                        const solutionsData =
+                          typeof selectedCompany.suggestedSolutions === "string"
+                            ? JSON.parse(selectedCompany.suggestedSolutions)
+                            : selectedCompany.suggestedSolutions;
+
+                        const solutions = solutionsData?.solutions || [];
+
+                        if (solutions.length === 0) {
+                          return (
+                            <Typography variant="body2" color="text.secondary">
+                              No solutions available.
+                            </Typography>
+                          );
+                        }
+
                         return (
-                          <Typography variant="body2" color="text.secondary">
-                            No solutions available.
-                          </Typography>
-                        );
-                      }
-                      
-                      return (
-                        <Box>
-                          {solutions.map((solution: any, index: number) => (
-                            <Paper
-                              key={index}
-                              elevation={0}
-                              sx={{
-                                mb: 2,
-                                p: 2.5,
-                                borderRadius: (theme) => theme.shape.borderRadius,
-                                border: "1px solid #e0e0e0",
-                                bgcolor: appTheme === 'dark' ? 'rgba(255, 255, 255, 0.02)' : '#fff',
-                                transition: "all 0.2s ease-in-out",
-                                "&:hover": {
-                                  boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                                  borderColor: "#1976d2",
-                                },
-                              }}
-                            >
-                              <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 1.5 }}>
-                                <Box sx={{ display: "flex", alignItems: "center" }}>
-                                  <Box
-                                    component="span"
-                                    sx={{
-                                      display: "inline-block",
-                                      width: 10,
-                                      height: 10,
-                                      bgcolor: "#1976d2",
-                                      borderRadius: "50%",
-                                      mr: 1.5,
-                                      mt: 0.7,
-                                    }}
-                                  />
-                                  <Typography
-                                    variant="body1"
-                                    fontWeight={600}
-                                  >
-                                    {solution.solution || 'Solution'}
-                                  </Typography>
-                                </Box>
-                                <Chip
-                                  label={solution.relevance?.toUpperCase() || 'MEDIUM'}
-                                  size="small"
-                                  sx={{
-                                    fontWeight: 600,
-                                    bgcolor:
-                                      solution.relevance === 'high' ? '#e8f5e9' :
-                                      solution.relevance === 'medium' ? '#fff3e0' :
-                                      '#f3e5f5',
-                                    color:
-                                      solution.relevance === 'high' ? '#2e7d32' :
-                                      solution.relevance === 'medium' ? '#e65100' :
-                                      '#7b1fa2',
-                                  }}
-                                />
-                              </Box>
-                              
-                              {solution.value_proposition && (
+                          <Box>
+                            {solutions.map((solution: any, index: number) => (
+                              <Paper
+                                key={index}
+                                elevation={0}
+                                sx={{
+                                  mb: 2,
+                                  p: 2.5,
+                                  borderRadius: (theme) =>
+                                    theme.shape.borderRadius,
+                                  border: "1px solid #e0e0e0",
+                                  bgcolor:
+                                    appTheme === "dark"
+                                      ? "rgba(255, 255, 255, 0.02)"
+                                      : "#fff",
+                                  transition: "all 0.2s ease-in-out",
+                                  "&:hover": {
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                                    borderColor: "#1976d2",
+                                  },
+                                }}
+                              >
                                 <Box
                                   sx={{
-                                    pl: 2.5,
-                                    borderLeft: '2px solid #1976d2',
-                                    mt: 1.5,
+                                    display: "flex",
+                                    alignItems: "flex-start",
+                                    justifyContent: "space-between",
+                                    mb: 1.5,
                                   }}
                                 >
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: "block", mb: 0.5, fontWeight: 600 }}
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                    }}
                                   >
-                                    Value Proposition:
-                                  </Typography>
-                                  <Typography
-                                    variant="body2"
-                                    color="text.secondary"
-                                    sx={{ lineHeight: 1.7 }}
-                                  >
-                                    {solution.value_proposition}
-                                  </Typography>
+                                    <Box
+                                      component="span"
+                                      sx={{
+                                        display: "inline-block",
+                                        width: 10,
+                                        height: 10,
+                                        bgcolor: "#1976d2",
+                                        borderRadius: "50%",
+                                        mr: 1.5,
+                                        mt: 0.7,
+                                      }}
+                                    />
+                                    <Typography
+                                      variant="body1"
+                                      fontWeight={600}
+                                    >
+                                      {solution.solution || "Solution"}
+                                    </Typography>
+                                  </Box>
+                                  <Chip
+                                    label={
+                                      solution.relevance?.toUpperCase() ||
+                                      "MEDIUM"
+                                    }
+                                    size="small"
+                                    sx={{
+                                      fontWeight: 600,
+                                      bgcolor:
+                                        solution.relevance === "high"
+                                          ? "#e8f5e9"
+                                          : solution.relevance === "medium"
+                                          ? "#fff3e0"
+                                          : "#f3e5f5",
+                                      color:
+                                        solution.relevance === "high"
+                                          ? "#2e7d32"
+                                          : solution.relevance === "medium"
+                                          ? "#e65100"
+                                          : "#7b1fa2",
+                                    }}
+                                  />
                                 </Box>
-                              )}
-                            </Paper>
-                          ))}
-                        </Box>
-                      );
-                    } catch (error) {
-                      return (
+
+                                {solution.value_proposition && (
+                                  <Box
+                                    sx={{
+                                      pl: 2.5,
+                                      borderLeft: "2px solid #1976d2",
+                                      mt: 1.5,
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{
+                                        display: "block",
+                                        mb: 0.5,
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      Value Proposition:
+                                    </Typography>
+                                    <Typography
+                                      variant="body2"
+                                      color="text.secondary"
+                                      sx={{ lineHeight: 1.7 }}
+                                    >
+                                      {solution.value_proposition}
+                                    </Typography>
+                                  </Box>
+                                )}
+                              </Paper>
+                            ))}
+                          </Box>
+                        );
+                      } catch (error) {
+                        return (
                   <Typography
                     variant="body2"
                     sx={{ 
-                      whiteSpace: 'pre-wrap',
+                              whiteSpace: "pre-wrap",
                       lineHeight: 1.8,
-                      color: 'text.primary'
+                              color: "text.primary",
                     }}
                   >
                     {selectedCompany.suggestedSolutions}
                   </Typography>
-                      );
-                    }
-                  })()
-                ) : (
-                  mockSolutions.map((solution, index) => (
+                        );
+                      }
+                    })()
+                  : mockSolutions.map((solution, index) => (
                   <Paper
                     key={index}
                     elevation={0}
@@ -3862,7 +4700,10 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                           {solution.description}
                         </Typography>
                         <Box
-                          sx={{ display: "flex", justifyContent: "flex-end" }}
+                              sx={{
+                                display: "flex",
+                                justifyContent: "flex-end",
+                              }}
                         >
                           <Button
                             variant="text"
@@ -3880,8 +4721,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       </Box>
                     </Box>
                   </Paper>
-                ))
-                )}
+                    ))}
               </Paper>
 
               {/* Action Plan Box */}
@@ -3904,122 +4744,148 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               
               <Box sx={{ p: 3 }}>
                 {selectedCompany.actionPlan ? (
-                  (() => {
-                    try {
-                      const actionPlanData = typeof selectedCompany.actionPlan === 'string' 
-                        ? JSON.parse(selectedCompany.actionPlan) 
-                        : selectedCompany.actionPlan;
-                      
-                      const actionSteps = actionPlanData?.action_steps || [];
-                      
-                      if (actionSteps.length === 0) {
+                    (() => {
+                      try {
+                        const actionPlanData =
+                          typeof selectedCompany.actionPlan === "string"
+                            ? JSON.parse(selectedCompany.actionPlan)
+                            : selectedCompany.actionPlan;
+
+                        const actionSteps = actionPlanData?.action_steps || [];
+
+                        if (actionSteps.length === 0) {
+                          return (
+                            <Typography variant="body2" color="text.secondary">
+                              No action plan available.
+                            </Typography>
+                          );
+                        }
+
                         return (
-                          <Typography variant="body2" color="text.secondary">
-                            No action plan available.
-                          </Typography>
-                        );
-                      }
-                      
-                      return (
-                        <Box>
-                          {actionSteps.map((step: any, index: number) => (
-                            <Paper
-                              key={index}
-                              elevation={0}
-                              sx={{
-                                mb: 2,
-                                p: 2.5,
-                                borderRadius: (theme) => theme.shape.borderRadius,
-                                borderLeft: `4px solid ${
-                                  step.priority === 'high' ? '#d32f2f' :
-                                  step.priority === 'medium' ? '#ed6c02' :
-                                  '#1976d2'
-                                }`,
-                                bgcolor: appTheme === 'dark' ? 'rgba(255, 255, 255, 0.02)' : '#fff',
-                                transition: "all 0.2s ease-in-out",
-                                "&:hover": {
-                                  boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                                },
-                              }}
-                            >
-                              <Box sx={{ display: "flex", alignItems: "flex-start", mb: 1.5 }}>
-                                <Chip
-                                  label={`Step ${index + 1}`}
-                                  size="small"
-                                  sx={{
-                                    mr: 1.5,
-                                    fontWeight: 600,
-                                    bgcolor: appTheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#f5f5f5',
-                                  }}
-                                />
-                                <Chip
-                                  label={step.priority?.toUpperCase() || 'MEDIUM'}
-                                  size="small"
-                                  sx={{
-                                    fontWeight: 600,
-                                    bgcolor:
-                                      step.priority === 'high' ? '#ffebee' :
-                                      step.priority === 'medium' ? '#fff3e0' :
-                                      '#e3f2fd',
-                                    color:
-                                      step.priority === 'high' ? '#c62828' :
-                                      step.priority === 'medium' ? '#e65100' :
-                                      '#1565c0',
-                                  }}
-                                />
-                              </Box>
-                              
-                              <Typography
-                                variant="body1"
-                                fontWeight={600}
-                                sx={{ mb: 1.5, lineHeight: 1.6 }}
+                          <Box>
+                            {actionSteps.map((step: any, index: number) => (
+                              <Paper
+                                key={index}
+                                elevation={0}
+                                sx={{
+                                  mb: 2,
+                                  p: 2.5,
+                                  borderRadius: (theme) =>
+                                    theme.shape.borderRadius,
+                                  borderLeft: `4px solid ${
+                                    step.priority === "high"
+                                      ? "#d32f2f"
+                                      : step.priority === "medium"
+                                      ? "#ed6c02"
+                                      : "#1976d2"
+                                  }`,
+                                  bgcolor:
+                                    appTheme === "dark"
+                                      ? "rgba(255, 255, 255, 0.02)"
+                                      : "#fff",
+                                  transition: "all 0.2s ease-in-out",
+                                  "&:hover": {
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                                  },
+                                }}
                               >
-                                {step.step || 'Action step'}
-                              </Typography>
-                              
-                              {step.rationale && (
                                 <Box
                                   sx={{
-                                    pl: 2,
-                                    borderLeft: '2px solid #e0e0e0',
-                                    mt: 1.5,
+                                    display: "flex",
+                                    alignItems: "flex-start",
+                                    mb: 1.5,
                                   }}
                                 >
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: "block", mb: 0.5, fontWeight: 600 }}
-                                  >
-                                    Rationale:
-                                  </Typography>
-                                  <Typography
-                                    variant="body2"
-                                    color="text.secondary"
-                                    sx={{ lineHeight: 1.7 }}
-                                  >
-                                    {step.rationale}
-                                  </Typography>
+                                  <Chip
+                                    label={`Step ${index + 1}`}
+                                    size="small"
+                                    sx={{
+                                      mr: 1.5,
+                                      fontWeight: 600,
+                                      bgcolor:
+                                        appTheme === "dark"
+                                          ? "rgba(255, 255, 255, 0.1)"
+                                          : "#f5f5f5",
+                                    }}
+                                  />
+                                  <Chip
+                                    label={
+                                      step.priority?.toUpperCase() || "MEDIUM"
+                                    }
+                                    size="small"
+                                    sx={{
+                                      fontWeight: 600,
+                                      bgcolor:
+                                        step.priority === "high"
+                                          ? "#ffebee"
+                                          : step.priority === "medium"
+                                          ? "#fff3e0"
+                                          : "#e3f2fd",
+                                      color:
+                                        step.priority === "high"
+                                          ? "#c62828"
+                                          : step.priority === "medium"
+                                          ? "#e65100"
+                                          : "#1565c0",
+                                    }}
+                                  />
                                 </Box>
-                              )}
-                            </Paper>
-                          ))}
-                        </Box>
-                      );
-                    } catch (error) {
-                      return (
+
+                                <Typography
+                                  variant="body1"
+                                  fontWeight={600}
+                                  sx={{ mb: 1.5, lineHeight: 1.6 }}
+                                >
+                                  {step.step || "Action step"}
+                                </Typography>
+
+                                {step.rationale && (
+                                  <Box
+                                    sx={{
+                                      pl: 2,
+                                      borderLeft: "2px solid #e0e0e0",
+                                      mt: 1.5,
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{
+                                        display: "block",
+                                        mb: 0.5,
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      Rationale:
+                                    </Typography>
+                                    <Typography
+                                      variant="body2"
+                                      color="text.secondary"
+                                      sx={{ lineHeight: 1.7 }}
+                                    >
+                                      {step.rationale}
+                                    </Typography>
+                                  </Box>
+                                )}
+                              </Paper>
+                            ))}
+                          </Box>
+                        );
+                      } catch (error) {
+                        return (
                   <Typography
                     variant="body2"
                     sx={{ 
-                      whiteSpace: 'pre-wrap',
+                              whiteSpace: "pre-wrap",
                       lineHeight: 1.8,
-                      color: 'text.primary'
+                              color: "text.primary",
                     }}
                   >
                     {selectedCompany.actionPlan}
                   </Typography>
-                      );
-                    }
-                  })()
+                        );
+                      }
+                    })()
                 ) : (
                   <>
                 <Alert 
@@ -4030,8 +4896,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       borderRadius: (theme) => theme.shape.borderRadius,
                   }}
                 >
-                    Personalized recommendations based on recent client activity
-                    and market trends.
+                        Personalized recommendations based on recent client
+                        activity and market trends.
                 </Alert>
 
                 <Box sx={{ mb: 3 }}>
@@ -4054,9 +4920,10 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                         variant="body2"
                         sx={{ fontStyle: "italic", mb: 1, fontWeight: 500 }}
                       >
-                        "We see that integrating your new customer data platform
-                        has been a challenge. LSEG has a proven AI-based
-                        solution that can accelerate the process by 30%."
+                            "We see that integrating your new customer data
+                            platform has been a challenge. LSEG has a proven
+                            AI-based solution that can accelerate the process by
+                            30%."
                     </Typography>
                       <Typography
                         variant="caption"
@@ -4082,9 +4949,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                         variant="body2"
                         sx={{ fontStyle: "italic", mb: 1, fontWeight: 500 }}
                       >
-                        "Given the rising regulatory compliance risks, LSEG's
-                        compliance monitoring tools could help you stay ahead of
-                        upcoming changes."
+                            "Given the rising regulatory compliance risks,
+                            LSEG's compliance monitoring tools could help you
+                            stay ahead of upcoming changes."
                     </Typography>
                       <Typography
                         variant="caption"
@@ -4111,9 +4978,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                         sx={{ fontStyle: "italic", mb: 1, fontWeight: 500 }}
                       >
                         "We noticed your upcoming expansion into Latin
-                        America—LSEG provides tailored financial data solutions
-                        for emerging markets that can enhance your market entry
-                        strategy."
+                            America—LSEG provides tailored financial data
+                            solutions for emerging markets that can enhance your
+                            market entry strategy."
                     </Typography>
                       <Typography
                         variant="caption"
@@ -4129,8 +4996,6 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               </Box>
                   </Paper>
                 </Box>
-
-           
           </>
         )}
 
@@ -4145,7 +5010,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             {selectedCompany.articles && (
               <>
                 {/* Directly Relevant Articles */}
-                {selectedCompany.articles.directly_relevant && selectedCompany.articles.directly_relevant.length > 0 && (
+                {selectedCompany.articles.directly_relevant &&
+                  selectedCompany.articles.directly_relevant.length > 0 && (
                   <Box sx={{ mb: 4 }}>
                     <Chip
                       label={`Directly Relevant (${selectedCompany.articles.directly_relevant.length})`}
@@ -4153,22 +5019,35 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       sx={{ mb: 2, fontWeight: 600 }}
                     />
                     <Grid container spacing={3}>
-                      {selectedCompany.articles.directly_relevant.map((article, index) => (
+                        {selectedCompany.articles.directly_relevant.map(
+                          (article, index) => (
                         <Grid item xs={12} md={6} key={index}>
                           <Paper
                             elevation={0}
                     sx={{
                               p: 3,
-                              borderRadius: (theme) => theme.shape.borderRadius,
+                                  borderRadius: (theme) =>
+                                    theme.shape.borderRadius,
                               border: "1px solid #eee",
-                              "&:hover": { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
-                            }}
-                          >
-                            <Typography variant="body2" fontWeight={600} gutterBottom>
+                                  "&:hover": {
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                                  },
+                                }}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  fontWeight={600}
+                                  gutterBottom
+                                >
                               {article.title}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-                              {article.source} • {article.published_date || "Unknown date"}
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: "block", mb: 1 }}
+                                >
+                                  {article.source} •{" "}
+                                  {article.published_date || "Unknown date"}
                             </Typography>
                   <Button
                               size="small"
@@ -4182,13 +5061,15 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                             </Button>
                           </Paper>
                         </Grid>
-                      ))}
+                          )
+                        )}
                     </Grid>
                   </Box>
                 )}
 
                 {/* Indirectly Useful Articles */}
-                {selectedCompany.articles.indirectly_useful && selectedCompany.articles.indirectly_useful.length > 0 && (
+                {selectedCompany.articles.indirectly_useful &&
+                  selectedCompany.articles.indirectly_useful.length > 0 && (
                   <Box sx={{ mb: 4 }}>
                     <Chip
                       label={`Indirectly Useful (${selectedCompany.articles.indirectly_useful.length})`}
@@ -4196,22 +5077,35 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       sx={{ mb: 2, fontWeight: 600 }}
                     />
                     <Grid container spacing={3}>
-                      {selectedCompany.articles.indirectly_useful.map((article, index) => (
+                        {selectedCompany.articles.indirectly_useful.map(
+                          (article, index) => (
                         <Grid item xs={12} md={6} key={index}>
                           <Paper
                             elevation={0}
                     sx={{
                               p: 3,
-                              borderRadius: (theme) => theme.shape.borderRadius,
+                                  borderRadius: (theme) =>
+                                    theme.shape.borderRadius,
                               border: "1px solid #eee",
-                              "&:hover": { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
-                            }}
-                          >
-                            <Typography variant="body2" fontWeight={600} gutterBottom>
+                                  "&:hover": {
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                                  },
+                                }}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  fontWeight={600}
+                                  gutterBottom
+                                >
                               {article.title}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-                              {article.source} • {article.published_date || "Unknown date"}
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: "block", mb: 1 }}
+                                >
+                                  {article.source} •{" "}
+                                  {article.published_date || "Unknown date"}
                             </Typography>
                   <Button
                               size="small"
@@ -4225,13 +5119,15 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                             </Button>
                           </Paper>
                         </Grid>
-                      ))}
+                          )
+                        )}
                     </Grid>
                   </Box>
                 )}
 
                 {/* Not Relevant Articles */}
-                {selectedCompany.articles.not_relevant && selectedCompany.articles.not_relevant.length > 0 && (
+                {selectedCompany.articles.not_relevant &&
+                  selectedCompany.articles.not_relevant.length > 0 && (
                   <Box sx={{ mb: 4 }}>
                     <Chip
                       label={`Not Relevant (${selectedCompany.articles.not_relevant.length})`}
@@ -4239,22 +5135,35 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       sx={{ mb: 2, fontWeight: 600 }}
                     />
                     <Grid container spacing={3}>
-                      {selectedCompany.articles.not_relevant.map((article, index) => (
+                        {selectedCompany.articles.not_relevant.map(
+                          (article, index) => (
                         <Grid item xs={12} md={6} key={index}>
                           <Paper
                             elevation={0}
                     sx={{
                               p: 3,
-                              borderRadius: (theme) => theme.shape.borderRadius,
+                                  borderRadius: (theme) =>
+                                    theme.shape.borderRadius,
                               border: "1px solid #eee",
-                              "&:hover": { boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
-                            }}
-                          >
-                            <Typography variant="body2" fontWeight={600} gutterBottom>
+                                  "&:hover": {
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                                  },
+                                }}
+                              >
+                                <Typography
+                                  variant="body2"
+                                  fontWeight={600}
+                                  gutterBottom
+                                >
                               {article.title}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-                              {article.source} • {article.published_date || "Unknown date"}
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: "block", mb: 1 }}
+                                >
+                                  {article.source} •{" "}
+                                  {article.published_date || "Unknown date"}
                             </Typography>
                             <Button
                               size="small"
@@ -4268,7 +5177,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                   </Button>
             </Paper>
                         </Grid>
-                      ))}
+                          )
+                        )}
                     </Grid>
                   </Box>
                 )}
@@ -4282,7 +5192,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                !selectedCompany.articles.not_relevant?.length)) && (
               <Box sx={{ textAlign: "center", py: 8 }}>
                 <Typography variant="body1" color="text.secondary">
-                  No articles available. Please run the analysis to fetch articles.
+                  No articles available. Please run the analysis to fetch
+                  articles.
               </Typography>
               </Box>
             )}
@@ -4860,7 +5771,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       <StyledTab 
                         label={
                         <Box sx={{ display: "flex", alignItems: "center" }}>
-                            Processing <TabCount>{processingCount}</TabCount>
+                          Processing <TabCount>{processingCount}</TabCount>
                           </Box>
                         } 
                       />
@@ -5006,7 +5917,10 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                             ))
                           : sortedCompanies
                               .slice(0, displayLimit)
-                              .map((company) => (
+                              .map((company) => {
+                                const companyProgress =
+                                  analysisProgressByCompany[company.id];
+                                return (
                               <TableRow
                                   key={company.id}
                                 hover
@@ -5132,7 +6046,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                                 </TableContent>
                                 <TableContent sx={{ pr: 3, py: 1 }}>
                                     {company.updates === "loading" ? (
-                                      <StatusLabel 
+                                      <StatusLabel
                                         status={company.updates}
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -5140,42 +6054,67 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                                           setTabValue(3);
                                         }}
                                         sx={{
-                                          cursor: 'pointer',
-                                          '&:hover': {
+                                          cursor: "pointer",
+                                          "&:hover": {
                                             opacity: 0.8,
-                                            transform: 'scale(1.05)',
+                                            transform: "scale(1.05)",
                                           },
-                                          transition: 'all 0.2s ease',
+                                          transition: "all 0.2s ease",
                                         }}
                                       >
                                         <CircularProgress
                                           size={12}
                                           thickness={4}
+                                          variant={
+                                            companyProgress
+                                              ? "determinate"
+                                              : "indeterminate"
+                                          }
+                                          {...(companyProgress
+                                            ? {
+                                                value: Math.max(
+                                                  0,
+                                                  Math.min(
+                                                    100,
+                                                    companyProgress.display || 0
+                                                  )
+                                                ),
+                                              }
+                                            : {})}
                                           sx={{ mr: 0.75 }}
                                         />
-                                      Processing
+                                        {companyProgress
+                                          ? `Processing ${Math.round(
+                                              companyProgress.display
+                                            )}%`
+                                          : "Processing"}
                                     </StatusLabel>
                                   ) : (
-                                      <StatusLabel 
+                                      <StatusLabel
                                         status={company.updates}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           // Filter by status
                                           if (company.updates === "completed") {
                                             setTabValue(1);
-                                          } else if (company.updates === "failed") {
+                                          } else if (
+                                            company.updates === "failed"
+                                          ) {
                                             setTabValue(2);
-                                          } else if (company.updates === "pending" || company.updates === "loading") {
+                                          } else if (
+                                            company.updates === "pending" ||
+                                            company.updates === "loading"
+                                          ) {
                                             setTabValue(3);
                                           }
                                         }}
                                         sx={{
-                                          cursor: 'pointer',
-                                          '&:hover': {
+                                          cursor: "pointer",
+                                          "&:hover": {
                                             opacity: 0.8,
-                                            transform: 'scale(1.05)',
+                                            transform: "scale(1.05)",
                                           },
-                                          transition: 'all 0.2s ease',
+                                          transition: "all 0.2s ease",
                                         }}
                                       >
                                         <StatusIndicator
@@ -5196,7 +6135,9 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                                     </StatusLabel>
                                   )}
                                 </TableContent>
-                                <TableContent sx={{ pr: 3, py: 1, width: 48 }}>
+                                  <TableContent
+                                    sx={{ pr: 3, py: 1, width: 48 }}
+                                  >
                                   <IconButton
                                     size="small"
                                     onClick={(e) => {
@@ -5204,13 +6145,14 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                                       setMenuCompany(company);
                                       setCompanyMenuAnchor(e.currentTarget);
                                     }}
-                                    sx={{ color: 'text.secondary' }}
+                                      sx={{ color: "text.secondary" }}
                                   >
                                     <MoreVertIcon fontSize="small" />
                                   </IconButton>
                                 </TableContent>
                               </TableRow>
-                              ))}
+                                );
+                              })}
                         {!loading && displayLimit < sortedCompanies.length && (
                             <TableRow>
                             <TableCell
@@ -5825,7 +6767,6 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           </DialogContent>
         </Dialog>
 
-
         {/* Add Company Dialog */}
         <Dialog
           open={addCompanyDialogOpen}
@@ -5833,41 +6774,61 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           maxWidth="sm"
           fullWidth
         >
-          <DialogTitle>
-            Add New Company
-          </DialogTitle>
+        <DialogTitle>Add New Company</DialogTitle>
           <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
               <TextField
                 label="Company Name *"
                 value={addCompanyForm.name}
-                onChange={(e) => setAddCompanyForm({ ...addCompanyForm, name: e.target.value })}
+              onChange={(e) =>
+                setAddCompanyForm({ ...addCompanyForm, name: e.target.value })
+              }
                 fullWidth
                 required
               />
               <TextField
                 label="Location"
                 value={addCompanyForm.location}
-                onChange={(e) => setAddCompanyForm({ ...addCompanyForm, location: e.target.value })}
+              onChange={(e) =>
+                setAddCompanyForm({
+                  ...addCompanyForm,
+                  location: e.target.value,
+                })
+              }
                 fullWidth
               />
               <TextField
                 label="Industry"
                 value={addCompanyForm.industry}
-                onChange={(e) => setAddCompanyForm({ ...addCompanyForm, industry: e.target.value })}
+              onChange={(e) =>
+                setAddCompanyForm({
+                  ...addCompanyForm,
+                  industry: e.target.value,
+                })
+              }
                 fullWidth
               />
               <TextField
                 label="Website"
                 value={addCompanyForm.website}
-                onChange={(e) => setAddCompanyForm({ ...addCompanyForm, website: e.target.value })}
+              onChange={(e) =>
+                setAddCompanyForm({
+                  ...addCompanyForm,
+                  website: e.target.value,
+                })
+              }
                 fullWidth
                 type="url"
               />
               <TextField
                 label="Description"
                 value={addCompanyForm.description}
-                onChange={(e) => setAddCompanyForm({ ...addCompanyForm, description: e.target.value })}
+              onChange={(e) =>
+                setAddCompanyForm({
+                  ...addCompanyForm,
+                  description: e.target.value,
+                })
+              }
                 fullWidth
                 multiline
                 rows={3}
@@ -5893,41 +6854,61 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           maxWidth="sm"
                 fullWidth
         >
-          <DialogTitle>
-            Edit Company
-          </DialogTitle>
+        <DialogTitle>Edit Company</DialogTitle>
           <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
               <TextField
                 label="Company Name *"
                 value={editCompanyForm.name}
-                onChange={(e) => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })}
+              onChange={(e) =>
+                setEditCompanyForm({ ...editCompanyForm, name: e.target.value })
+              }
                 fullWidth
                 required
               />
               <TextField
                 label="Location"
                 value={editCompanyForm.location}
-                onChange={(e) => setEditCompanyForm({ ...editCompanyForm, location: e.target.value })}
+              onChange={(e) =>
+                setEditCompanyForm({
+                  ...editCompanyForm,
+                  location: e.target.value,
+                })
+              }
                 fullWidth
               />
               <TextField
                 label="Industry"
                 value={editCompanyForm.industry}
-                onChange={(e) => setEditCompanyForm({ ...editCompanyForm, industry: e.target.value })}
+              onChange={(e) =>
+                setEditCompanyForm({
+                  ...editCompanyForm,
+                  industry: e.target.value,
+                })
+              }
                 fullWidth
               />
               <TextField
                 label="Website"
                 value={editCompanyForm.website}
-                onChange={(e) => setEditCompanyForm({ ...editCompanyForm, website: e.target.value })}
+              onChange={(e) =>
+                setEditCompanyForm({
+                  ...editCompanyForm,
+                  website: e.target.value,
+                })
+              }
                 fullWidth
                 type="url"
               />
               <TextField
                 label="Description"
                 value={editCompanyForm.description}
-                onChange={(e) => setEditCompanyForm({ ...editCompanyForm, description: e.target.value })}
+              onChange={(e) =>
+                setEditCompanyForm({
+                  ...editCompanyForm,
+                  description: e.target.value,
+                })
+              }
                 fullWidth
                 multiline
                 rows={3}
@@ -5985,9 +6966,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             </Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
             <Button
               onClick={confirmDeleteCompanies}
               variant="contained"
@@ -6169,15 +7148,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       elevation={0}
                       sx={{
                         p: 3,
-                      border: `1px solid ${
-                        muiTheme.palette.divider
-                      }`,
+                      border: `1px solid ${muiTheme.palette.divider}`,
                         borderRadius: muiTheme.shape.borderRadius,
                       cursor: "pointer",
                       transition: "all 0.2s",
                       "&:hover": {
-                        borderColor: muiTheme.palette.primary
-                          .main,
+                        borderColor: muiTheme.palette.primary.main,
                         boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
                       },
                     }}
@@ -6222,15 +7198,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                       elevation={0}
                       sx={{
                         p: 3,
-                      border: `1px solid ${
-                        muiTheme.palette.divider
-                      }`,
+                      border: `1px solid ${muiTheme.palette.divider}`,
                         borderRadius: muiTheme.shape.borderRadius,
                       cursor: "pointer",
                       transition: "all 0.2s",
                       "&:hover": {
-                        borderColor: muiTheme.palette.primary
-                          .main,
+                        borderColor: muiTheme.palette.primary.main,
                         boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
                       },
                       }}

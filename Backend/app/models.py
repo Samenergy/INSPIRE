@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any, Generic, TypeVar, Union
 from enum import Enum
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 class DataSource(str, Enum):
     APIFY = "apify"
@@ -309,11 +309,33 @@ class RecentActivity(BaseModel):
     type: str
     id: int
     content: str
-    date: Optional[date] = None
+    date: Optional[Union[date, datetime, str]] = None
     source: str
-    
+
+    @field_validator("date", mode="before")
+    def _parse_date(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    return datetime.strptime(value.replace("Z", ""), fmt).date()
+                except ValueError:
+                    continue
+            # If parsing fails, return None to avoid validation errors
+            return None
+        return None
+
     model_config = {
         "from_attributes": True,
+        "json_encoders": {
+            date: lambda v: v.isoformat() if v else None,
+            datetime: lambda v: v.isoformat() if v else None,
+        },
     }
 
 # Authentication Models

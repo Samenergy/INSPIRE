@@ -1,0 +1,32 @@
+{
+  "config": {
+    "csv_path": "../exports/mtn_rwanda_news_articles_20251005_143859.csv",
+    "company_name": "MTN Rwanda",
+    "sme_objective": "We provide mobile payment solutions and fintech services for telecom operators. Looking for partnership opportunities in mobile money, digital wallets, and financial inclusion.",
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "chunk_size": 500,
+    "chunk_overlap": 100,
+    "max_chunk_chars": 1800,
+    "milvus_host": "localhost",
+    "milvus_port": "19530",
+    "collection_name": "rag_notebook_test",
+    "top_k": 5,
+    "similarity_threshold": 0.2,
+    "ollama_endpoint": "http://localhost:11434/api/generate",
+    "llm_model": "llama3.1:latest",
+    "temperature": 0.3,
+    "max_tokens": 1000
+  },
+  "model_info": {
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_dim": 384,
+    "llm_model": "llama3.1:latest",
+    "milvus_used": false
+  },
+  "statistics": {
+    "total_articles": 152,
+    "total_chunks": 152,
+    "avg_chunk_length": 694.1118421052631,
+    "categories_extracted": 10
+  }
+}

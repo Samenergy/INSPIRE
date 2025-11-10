@@ -1,0 +1,24 @@
+{
+  "retrieval_quality": {
+    "average_similarity": 0.6277323114871979,
+    "median_similarity": 0.6199366629123688,
+    "min_similarity": 0.5488584637641907,
+    "max_similarity": 0.7244882583618164
+  },
+  "llm_quality": {
+    "success_rate": 1.0,
+    "average_time": 16.679719900000002,
+    "total_time": 166.797199
+  },
+  "extraction_completeness": {
+    "total_items": 40,
+    "average_items_per_category": 4.0,
+    "categories_with_data": 10
+  },
+  "performance": {
+    "total_time": 168.85295,
+    "average_time_per_category": 16.885295,
+    "chunks_processed": 152,
+    "articles_processed": 152
+  }
+}

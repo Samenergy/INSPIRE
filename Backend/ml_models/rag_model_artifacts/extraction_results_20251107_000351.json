@@ -1,0 +1,263 @@
+{
+  "latest_updates": {
+    "category": "Latest Updates",
+    "confidence": 0.7244882583618164,
+    "chunks_retrieved": 5,
+    "llm_time": 16.443759,
+    "data": {
+      "updates": [
+        {
+          "update": "MTN Rwanda published its Half Year 2025 Results, marking a solid return to profit and robust MoMo growth.",
+          "confidence": "high"
+        },
+        {
+          "update": "MTN Rwanda launched its commercial 5G network in the City of Kigali, with plans to expand across the country.",
+          "confidence": "high"
+        },
+        {
+          "update": "MTN Rwanda announced stable revenues and sustained subscriber growth for the nine months ended September 2024.",
+          "confidence": "medium"
+        },
+        {
+          "update": "MTN Rwanda reported a profit turnaround in Q4 2024, demonstrating resilience and commitment to achieving goals.",
+          "confidence": "high"
+        }
+      ]
+    }
+  },
+  "challenges": {
+    "category": "Challenges",
+    "confidence": 0.6224503755569458,
+    "chunks_retrieved": 5,
+    "llm_time": 14.263401,
+    "data": {
+      "challenges": [
+        {
+          "challenge": "Competing with other telecom operators in Rwanda",
+          "impact": "high"
+        },
+        {
+          "challenge": "Expanding network coverage and increasing 4G coverage nationwide",
+          "impact": "medium"
+        },
+        {
+          "challenge": "Upgrading network infrastructure to support 5G technology",
+          "impact": "high"
+        },
+        {
+          "challenge": "Partnering with local communities at the grassroots level to equip people with digital skills and tools",
+          "impact": "low"
+        }
+      ]
+    }
+  },
+  "decision_makers": {
+    "category": "Decision Makers",
+    "confidence": 0.6174229502677917,
+    "chunks_retrieved": 5,
+    "llm_time": 11.377456,
+    "data": {
+      "decision_makers": [
+        {
+          "name": "Monzer A.",
+          "role": "CEO"
+        },
+        {
+          "name": "Faustin Mbundu",
+          "role": "Chairman"
+        },
+        {
+          "name": "Rugigana Evariste",
+          "role": "Director General, RURA"
+        },
+        {
+          "name": "Diane Karusisi",
+          "role": "CEO, Bank of Kigali Plc"
+        }
+      ]
+    }
+  },
+  "market_position": {
+    "category": "Market Position",
+    "confidence": 0.5488584637641907,
+    "chunks_retrieved": 5,
+    "llm_time": 8.433166,
+    "data": {
+      "description": "MTN Rwanda is a leading telecommunications company in Rwanda with a strong presence in mobile subscribers, mobile money, data services, and home broadband.",
+      "competitors": [
+        "Vodacom",
+        "Airtel"
+      ],
+      "market_share": null
+    }
+  },
+  "future_plans": {
+    "category": "Future Plans",
+    "confidence": 0.6464763045310974,
+    "chunks_retrieved": 5,
+    "llm_time": 19.106318,
+    "data": {
+      "plans": [
+        {
+          "plan": "Expand 5G network across the country",
+          "timeline": "Beyond Kigali"
+        },
+        {
+          "plan": "Drive commercial growth by expanding subscriber base and meeting rising demand for data and digital services",
+          "timeline": "2025"
+        },
+        {
+          "plan": "Accelerate platform business by positioning fintech and enterprise as engines for sustainable growth and diversification",
+          "timeline": "2025"
+        },
+        {
+          "plan": "Modernize infrastructure through continued investment in coverage, quality, and digitization",
+          "timeline": "2025"
+        },
+        {
+          "plan": "Enhance operational efficiency by optimizing costs and adopting smarter technologies",
+          "timeline": "2025"
+        },
+        {
+          "plan": "Deepen ESG impact to create inclusive and lasting value for Rwandans",
+          "timeline": "2025"
+        }
+      ]
+    }
+  },
+  "action_plan": {
+    "category": "Action Plan",
+    "confidence": 0.6620197653770447,
+    "chunks_retrieved": 5,
+    "llm_time": 22.33696,
+    "data": {
+      "action_steps": [
+        {
+          "step": "Reach out to MTN Rwanda's Fintech Commercial Business Development Senior Manager (Jean Paul Musugi) to explore partnership opportunities in mobile money and financial inclusion.",
+          "rationale": "The article highlights the success of Mobile Money Rwanda Ltd, which aligns with the SME's objectives. Reaching out to Jean Paul Musugi may lead to potential collaboration.",
+          "priority": "high"
+        },
+        {
+          "step": "Review MTN Rwanda's tender notice for a Mobile Number Portability Administration Service and consider submitting a proposal if the SME has relevant expertise.",
+          "rationale": "The tender notice indicates that MTN Rwanda is looking for qualified bidders to provide a specific service, which may be an opportunity for the SME to demonstrate its capabilities.",
+          "priority": "medium"
+        },
+        {
+          "step": "Attend industry events and conferences where MTN Rwanda is participating or sponsoring, such as the MTN Global Leadership Gathering Awards, to establish connections with their leadership team and explore potential partnership opportunities.",
+          "rationale": "The articles highlight MTN Rwanda's commitment to innovation and collaboration. Attending industry events may provide a platform for the SME to network with key decision-makers and discuss potential partnerships.",
+          "priority": "low"
+        }
+      ]
+    }
+  },
+  "solution": {
+    "category": "Solution",
+    "confidence": 0.6570243597030639,
+    "chunks_retrieved": 5,
+    "llm_time": 17.558447,
+    "data": {
+      "solutions": [
+        {
+          "solution": "Digital Wallet Integration",
+          "value_proposition": "Enhance Mobile Money Rwanda Ltd's capabilities with seamless digital wallet integration, increasing financial inclusion and accessibility for underserved communities.",
+          "relevance": "high"
+        },
+        {
+          "solution": "5G Network Optimization",
+          "value_proposition": "Optimize MTN Rwanda's 5G network to improve user experience, increase coverage, and prepare Rwanda for future digital demands, aligning with the company's ambition for digital inclusion.",
+          "relevance": "high"
+        },
+        {
+          "solution": "Mobile Payment Solutions",
+          "value_proposition": "Develop mobile payment solutions tailored to MTN Rwanda's needs, enhancing financial services, increasing customer trust, and driving economic growth through digital financial revolution.",
+          "relevance": "medium"
+        }
+      ]
+    }
+  },
+  "company_info": {
+    "category": "Company Info",
+    "confidence": 0.6104830265045166,
+    "chunks_retrieved": 5,
+    "llm_time": 16.230209,
+    "data": {
+      "description": {
+        "sentence1": "MTN Rwanda is a telecommunications company that provides mobile network services to customers in Rwanda.",
+        "sentence2": "Their main products and services include mobile subscriptions, Mobile Money (MoMo) services, data plans, home broadband subscriptions, and digital financial services.",
+        "sentence3": "The company holds a market leadership position in Rwanda's telecommunications industry.",
+        "sentence4": "With over 7.6 million subscribers, MTN Rwanda has a significant scale and reach in the country.",
+        "sentence5": "Recently, the company has focused on expanding its network, increasing 4G coverage, and enhancing digital financial services to support Rwanda's digital transformation efforts."
+      },
+      "industry": "Telecommunications",
+      "headquarters": null
+    }
+  },
+  "strengths": {
+    "category": "Strengths",
+    "confidence": 0.5719241976737977,
+    "chunks_retrieved": 5,
+    "llm_time": 24.481666,
+    "data": {
+      "strengths": [
+        {
+          "strength": "Market Leadership in Rwanda",
+          "evidence": "MTN Rwanda received the Overall Winner Award for Building the Largest & Most Valuable Platforms - Fintech"
+        },
+        {
+          "strength": "Strong Financial Performance",
+          "evidence": "Mobile Subscribers: 7.6 million, up 5.3% year-on-year (YoY). Active Mobile Money (MoMo) Subscribers: 5.2 million, up 13.4% YoY."
+        },
+        {
+          "strength": "Innovative Services",
+          "evidence": "MTN Rwanda paid a courtesy visit to Zipline Rwanda, discussing opportunities to collaborate more closely and strengthen our partnership"
+        },
+        {
+          "strength": "Robust Mobile Money Growth",
+          "evidence": "Active MoMo Subscribers: 5.2 million, up 13.4% YoY. MoMo Active Merchant Base: 451,000, up 58.3% YoY."
+        },
+        {
+          "strength": "Strong Data Revenue Growth",
+          "evidence": "strong double-digit data revenue growth"
+        },
+        {
+          "strength": "Market Leadership in Fintech",
+          "evidence": "MTN Rwanda received the Overall Winner Award for Building the Largest & Most Valuable Platforms - Fintech"
+        },
+        {
+          "strength": "Investment in Technology and Innovation",
+          "evidence": "During the visit, both teams discussed opportunities to collaborate more closely and strengthen our partnership to create even greater impact for the communities we serve."
+        }
+      ]
+    }
+  },
+  "opportunities": {
+    "category": "Opportunities",
+    "confidence": 0.6161754131317139,
+    "chunks_retrieved": 5,
+    "llm_time": 16.565817,
+    "data": {
+      "opportunities": [
+        {
+          "opportunity": "Expansion of 5G network coverage",
+          "potential": "high",
+          "basis": "MTN Rwanda launched Rwanda's first commercial 5G network"
+        },
+        {
+          "opportunity": "Increased adoption of digital financial services (MoMo)",
+          "potential": "high",
+          "basis": "Active MoMo Subscribers increased by 13.4% YoY and MoMo Active Merchant Base increased by 58.3% YoY"
+        },
+        {
+          "opportunity": "Growth in mobile subscribers",
+          "potential": "medium",
+          "basis": "Mobile Subscribers increased by 5.3% YoY"
+        },
+        {
+          "opportunity": "Expansion of home broadband subscriptions",
+          "potential": "medium",
+          "basis": "Home Broadband Subscriptions increased by 25.3% YoY"
+        }
+      ]
+    }
+  }
+}

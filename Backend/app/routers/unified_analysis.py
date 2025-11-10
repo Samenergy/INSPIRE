@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Form
-from typing import Optional
+from typing import Optional, Dict, Any
 from app.models import APIResponse
 from app.scrapers.serpapi_scraper import SerpApiScraper
 from app.models import Company
@@ -11,8 +11,57 @@ from app.config import settings
 from loguru import logger
 import pandas as pd
 import io
+from uuid import uuid4
+from datetime import datetime
 
 router = APIRouter()
+
+# In-memory progress tracker for long-running analyses.
+# Keys are job IDs supplied by the client; values contain progress metadata.
+analysis_progress: Dict[str, Dict[str, Any]] = {}
+
+
+def update_analysis_progress(
+    job_id: Optional[str],
+    percent: float,
+    message: str,
+    status: str = "running",
+    extra: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Update the current progress for a running unified analysis.
+    """
+    if not job_id:
+        return
+
+    safe_percent = max(0.0, min(100.0, float(percent)))
+    progress_payload: Dict[str, Any] = {
+        "job_id": job_id,
+        "percent": safe_percent,
+        "message": message,
+        "status": status,
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+    if extra:
+        progress_payload.update(extra)
+
+    analysis_progress[job_id] = progress_payload
+
+
+def finalize_analysis_progress(job_id: Optional[str], status: str, message: str) -> None:
+    """
+    Mark an analysis job as completed or failed and optionally clean up later.
+    """
+    if not job_id:
+        return
+
+    update_analysis_progress(
+        job_id=job_id,
+        percent=100.0,
+        status=status,
+        message=message,
+    )
 
 @router.post(
     "/unified-analysis",
@@ -69,7 +118,8 @@ async def unified_company_analysis(
     sme_id: int = Form(..., description="Your SME ID"),
     sme_objective: str = Form(..., description="Your SME's objectives and capabilities"),
     max_articles: int = Form(100, description="Maximum number of articles to scrape (default: 100)"),
-    company_id: Optional[int] = Form(None, description="Optional: Existing company ID to use (if not provided, will search by name)")
+    company_id: Optional[int] = Form(None, description="Optional: Existing company ID to use (if not provided, will search by name)"),
+    job_id: Optional[str] = Form(None, description="Optional: Client-supplied job identifier for progress tracking"),
 ):
     """
     Unified endpoint that:
@@ -80,12 +130,25 @@ async def unified_company_analysis(
     5. Stores analysis results in database
     """
     try:
+        job_identifier = job_id or f"{sme_id}-{company_name}-{uuid4().hex}"
+        update_analysis_progress(
+            job_identifier,
+            10.0,
+            "Initializing unified analysis pipeline...",
+            extra={"stage": "initializing"},
+        )
         logger.info(f"🚀 Starting unified analysis for: {company_name}")
         
         # ============================================
         # STEP 1: Google Scraping (NO LinkedIn)
         # ============================================
         logger.info("📰 Step 1/3: Scraping company data from Google...")
+        update_analysis_progress(
+            job_identifier,
+            20.0,
+            "Scraping company articles...",
+            extra={"stage": "scraping"},
+        )
         
         try:
             # Check if SerpAPI key is configured
@@ -119,6 +182,12 @@ async def unified_company_analysis(
             # Get all scraped articles (up to max_articles)
             articles_data = scrape_result.news_articles[:max_articles]
             logger.info(f"📊 Retrieved {len(articles_data)} articles (max allowed: {max_articles})")
+            update_analysis_progress(
+                job_identifier,
+                30.0,
+                f"Scraped {len(articles_data)} articles.",
+                extra={"stage": "scraping", "articles_found": len(articles_data)},
+            )
             
             if not articles_data:
                 raise HTTPException(
@@ -141,6 +210,12 @@ async def unified_company_analysis(
         # STEP 2: Classify Articles Based on SME Objectives
         # ============================================
         logger.info("🔍 Step 2/3: Classifying articles based on SME objectives...")
+        update_analysis_progress(
+            job_identifier,
+            40.0,
+            "Classifying articles against SME objectives...",
+            extra={"stage": "classification"},
+        )
         
         # Convert articles to DataFrame for classification
         articles_list = []
@@ -178,6 +253,12 @@ async def unified_company_analysis(
             df_classified = df
         
         logger.info(f"✅ Classified {len(df_classified)} articles")
+        update_analysis_progress(
+            job_identifier,
+            50.0,
+            f"Classified {len(df_classified)} articles.",
+            extra={"stage": "classification", "articles_classified": len(df_classified)},
+        )
         
         # Check if prediction_label exists in df_classified
         if 'prediction_label' in df_classified.columns:
@@ -192,6 +273,12 @@ async def unified_company_analysis(
         # STEP 3: Store Classified Articles in Database
         # ============================================
         logger.info("💾 Step 3/3: Storing classified articles in database...")
+        update_analysis_progress(
+            job_identifier,
+            60.0,
+            "Storing classified articles to database...",
+            extra={"stage": "storage"},
+        )
         
         # First, get or create company
         # If company_id is provided, use it directly (e.g., from frontend after creating company)
@@ -223,6 +310,7 @@ async def unified_company_analysis(
                 logger.info(f"📝 Found existing company: {company_name} (ID: {company_id})")
         
         # Store classified articles
+        total_classified_articles = len(df_classified)
         articles_stored = 0
         for idx, row in df_classified.iterrows():
             try:
@@ -254,11 +342,27 @@ async def unified_company_analysis(
                 logger.warning(f"Failed to store article: {e}")
         
         logger.info(f"✅ Stored {articles_stored} articles in database")
+        update_analysis_progress(
+            job_identifier,
+            70.0,
+            f"Stored {articles_stored} articles in database.",
+            extra={
+                "stage": "storage",
+                "articles_stored": articles_stored,
+                "articles_total": total_classified_articles,
+            },
+        )
         
         # ============================================
         # STEP 4: RAG Analysis (10 Categories)
         # ============================================
         logger.info("🤖 Step 4/4: Running RAG analysis (10 categories)...")
+        update_analysis_progress(
+            job_identifier,
+            80.0,
+            "Running RAG analysis (10 categories)...",
+            extra={"stage": "rag_analysis"},
+        )
         
         # Convert DataFrame to list of dicts for RAG analysis
         articles_for_analysis = []
@@ -293,6 +397,16 @@ async def unified_company_analysis(
         logger.info(f"   Items extracted: {rag_metadata['total_items_extracted']}")
         logger.info(f"   Average confidence: {rag_metadata['average_confidence']:.2%}")
         logger.info(f"   Duration: {rag_metadata['duration_seconds']:.1f}s")
+        update_analysis_progress(
+            job_identifier,
+            90.0,
+            "RAG analysis complete. Preparing results...",
+            extra={
+                "stage": "rag_analysis",
+                "items_extracted": rag_metadata['total_items_extracted'],
+                "average_confidence": rag_metadata['average_confidence'],
+            },
+        )
         
         # ============================================
         # STEP 5: Store RAG Analysis in Database
@@ -472,10 +586,16 @@ async def unified_company_analysis(
                 'total_articles_analyzed': len(articles_for_analysis),
                 'llm_model': settings.ollama_model,
                 'embedding_model': 'all-MiniLM-L6-v2'
-            }
+            },
+            'job_id': job_identifier
         }
         
         logger.info("✅ Unified analysis with RAG completed successfully!")
+        finalize_analysis_progress(
+            job_identifier,
+            "completed",
+            f"Analysis completed for {company_name}.",
+        )
         
         return APIResponse(
             success=True,
@@ -483,14 +603,46 @@ async def unified_company_analysis(
             data=results
         )
         
-    except HTTPException:
+    except HTTPException as http_exc:
+        finalize_analysis_progress(
+            locals().get("job_identifier", job_id),
+            "failed",
+            str(http_exc.detail) if hasattr(http_exc, "detail") else "Analysis failed.",
+        )
         raise
     except Exception as e:
         logger.error(f"Unified analysis failed: {e}")
+        finalize_analysis_progress(
+            locals().get("job_identifier", job_id),
+            "failed",
+            f"Unified analysis failed: {str(e)}",
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Unified analysis failed: {str(e)}"
         )
+
+
+@router.get(
+    "/unified-analysis/progress/{job_id}",
+    summary="Get progress for a running unified analysis job",
+    description="Return the latest percentage completion and status message for the specified analysis job."
+)
+async def get_unified_analysis_progress(job_id: str):
+    progress = analysis_progress.get(job_id)
+    if not progress:
+        return APIResponse(
+            success=False,
+            message="Progress not found for the provided job_id. It may have expired or never existed.",
+            data={"job_id": job_id},
+        )
+
+    return APIResponse(
+        success=True,
+        message="Progress retrieved successfully.",
+        data=progress,
+    )
+
 
 @router.get(
     "/info",
