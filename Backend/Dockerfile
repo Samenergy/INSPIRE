@@ -4,11 +4,43 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies required for Playwright browsers
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     curl \
+    ca-certificates \
+    libasound2 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libatspi2.0-0 \
+    libdrm2 \
+    libgbm1 \
+    libglib2.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libgtk-3-0 \
+    libicu72 \
+    libjpeg62-turbo \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libvpx7 \
+    libwebp7 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libxrender1 \
+    libxshmfence1 \
+    fonts-noto-color-emoji \
+    fonts-ubuntu \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -18,8 +50,8 @@ COPY requirements.txt .
 RUN python -m pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
-RUN playwright install --with-deps
+# Install Playwright browsers without pulling additional apt dependencies
+RUN playwright install --no-deps chromium
 
 # Copy application code
 COPY . .
