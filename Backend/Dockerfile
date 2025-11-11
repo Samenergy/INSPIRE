@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     curl \
     ca-certificates \
+    wget \
+    gnupg \
     libasound2 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -19,13 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libgdk-pixbuf-2.0-0 \
     libgtk-3-0 \
-    libicu72 \
+    libicu-dev \
     libjpeg62-turbo \
     libnss3 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
-    libvpx7 \
-    libwebp7 \
+    libvpx-dev \
+    libwebp-dev \
     libx11-6 \
     libx11-xcb1 \
     libxcb1 \
@@ -38,9 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     libxrender1 \
     libxshmfence1 \
-    fonts-noto-color-emoji \
-    fonts-ubuntu \
     fonts-liberation \
+    fonts-dejavu-core \
+    fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
