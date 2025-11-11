@@ -28,6 +28,18 @@ from loguru import logger
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Ensure marshmallow exposes __version_info__ for environs/pymilvus compatibility
+try:
+    import marshmallow as ma
+    if not hasattr(ma, "__version_info__"):
+        try:
+            version_tuple = tuple(int(part) for part in ma.__version__.split(".") if part.isdigit())
+        except Exception:
+            version_tuple = (0, 0, 0)
+        ma.__version_info__ = version_tuple
+except ImportError:
+    pass
+
 # Milvus (optional, with in-memory fallback)
 try:
     from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
