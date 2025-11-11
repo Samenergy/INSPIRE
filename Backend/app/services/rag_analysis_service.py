@@ -54,6 +54,15 @@ def _patch_marshmallow():
         ma.fields.Field.__orig_init__ = original_init  # type: ignore[attr-defined]
         ma.fields.Field.__init__ = _field_init_with_missing  # type: ignore[assignment]
 
+    if not hasattr(ma.fields.Field, "missing"):
+        def _get_missing(self):
+            return getattr(self, "load_default", None)
+
+        def _set_missing(self, value):
+            setattr(self, "load_default", value)
+
+        ma.fields.Field.missing = property(_get_missing, _set_missing)  # type: ignore[attr-defined]
+
     return ma
 
 
