@@ -52,8 +52,8 @@ COPY requirements.txt .
 RUN python -m pip install --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers without pulling additional apt dependencies
-RUN playwright install --no-deps chromium
+# Install Playwright browsers
+RUN playwright install chromium
 
 # Copy application code
 COPY . .
