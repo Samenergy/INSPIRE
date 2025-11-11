@@ -28,49 +28,43 @@ from loguru import logger
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Ensure marshmallow exposes __version_info__ for environs/pymilvus compatibility
-try:
-    import marshmallow as ma
-    if not hasattr(ma, "__version_info__"):
-        try:
-            version_tuple = tuple(int(part) for part in ma.__version__.split(".") if part.isdigit())
-        except Exception:
-            version_tuple = (0, 0, 0)
-        ma.__version_info__ = version_tuple
-except ImportError:
-    pass
 
-# Milvus (optional, with in-memory fallback)
-try:
-# Patch marshmallow compatibility for pymilvus/environs before importing pymilvus
-try:
-    import marshmallow as ma
+def _patch_marshmallow():
+    """Ensure marshmallow exposes compatibility attributes for environs/pymilvus."""
+    try:
+        import marshmallow as ma  # type: ignore
+    except ImportError:
+        return None
+
     if not hasattr(ma, "__version_info__"):
         try:
             version_tuple = tuple(int(part) for part in ma.__version__.split(".") if part.isdigit())
         except Exception:
             version_tuple = (0, 0, 0)
-        ma.__version_info__ = version_tuple
-    # Marshal compatibility: translate deprecated "missing" kwarg to "load_default"
-    _orig_field_init = getattr(ma.fields.Field, "__orig_init__", ma.fields.Field.__init__)
+        ma.__version_info__ = version_tuple  # type: ignore[attr-defined]
 
     if not hasattr(ma.fields.Field, "__orig_init__"):
+        original_init = ma.fields.Field.__init__
+
         def _field_init_with_missing(self, *args, **kwargs):
             if "missing" in kwargs and "load_default" not in kwargs:
                 kwargs["load_default"] = kwargs.pop("missing")
-            return _orig_field_init(self, *args, **kwargs)
+            return original_init(self, *args, **kwargs)
 
-        ma.fields.Field.__orig_init__ = _orig_field_init
-        ma.fields.Field.__init__ = _field_init_with_missing
-except ImportError:
-    ma = None  # graceful fallback
+        ma.fields.Field.__orig_init__ = original_init  # type: ignore[attr-defined]
+        ma.fields.Field.__init__ = _field_init_with_missing  # type: ignore[assignment]
 
+    return ma
+
+
+_patched_marshmallow = _patch_marshmallow()
+
+# Milvus (optional, with in-memory fallback)
 try:
     from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
-except Exception:
-    connections = Collection = FieldSchema = CollectionSchema = DataType = utility = None
     MILVUS_AVAILABLE = True
 except ImportError:
+    connections = Collection = FieldSchema = CollectionSchema = DataType = utility = None  # type: ignore
     MILVUS_AVAILABLE = False
     logger.warning("pymilvus not available, using in-memory vector storage")
 
