@@ -12,23 +12,26 @@ def setup_logging():
         colorize=True
     )
 
-    if not settings.debug:
+    try:
+        if not settings.debug:
+            logger.add(
+                "logs/app.log",
+                rotation="1 day",
+                retention="30 days",
+                compression="zip",
+                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                level=settings.log_level
+            )
+
         logger.add(
-            "logs/app.log",
-            rotation="1 day",
-            retention="30 days",
+            "logs/errors.log",
+            rotation="1 week",
+            retention="90 days",
             compression="zip",
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            level=settings.log_level
+            level="ERROR"
         )
-
-    logger.add(
-        "logs/errors.log",
-        rotation="1 week",
-        retention="90 days",
-        compression="zip",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        level="ERROR"
-    )
+    except PermissionError:
+        logger.warning("Unable to write log files; continuing without file logging.")
 
     logger.info("Logging configured successfully")
