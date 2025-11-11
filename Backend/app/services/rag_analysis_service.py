@@ -686,14 +686,14 @@ class RAGAnalysisService:
         logger.info(f"📊 Extracted {total_items} total items across 10 categories")
         
         metadata = {
-            'company_name': company_name,
-            'sme_objective': sme_objective,
-            'articles_processed': len(articles),
+                'company_name': company_name,
+                'sme_objective': sme_objective,
+                'articles_processed': len(articles),
             'chunks_created': chunk_count,
-            'total_items_extracted': total_items,
-            'average_confidence': float(avg_confidence),
-            'duration_seconds': duration,
-            'timestamp': datetime.now().isoformat(),
+                'total_items_extracted': total_items,
+                'average_confidence': float(avg_confidence),
+                'duration_seconds': duration,
+                'timestamp': datetime.now().isoformat(),
             'hyperparameters': dict(self.hyperparameters),
             'vector_storage': vector_storage_used,
             'vector_store_reused': vector_store_reused,

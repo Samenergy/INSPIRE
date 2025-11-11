@@ -5666,16 +5666,6 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                   </>
                 ) : (
                   <>
-                    <ActionButton variant="outlined" startIcon={<DownloadIcon />}>
-                      Export
-                    </ActionButton>
-                    <ActionButton
-                      variant="outlined"
-                      startIcon={<DeleteIcon />}
-                      onClick={toggleMultipleDeleteMode}
-                    >
-                    Delete Companies
-                    </ActionButton>
                     <ActionButton
                       variant="contained"
                       color="primary"
