@@ -29,7 +29,13 @@ def setup_middleware(app: FastAPI):
     if not settings.debug:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["localhost", "127.0.0.1", "0.0.0.0", "*.yourdomain.com", "inspire-4.onrender.com"]
+            allowed_hosts=[
+                "localhost",
+                "127.0.0.1",
+                "0.0.0.0",
+                "46.62.228.201",
+                "inspire-4.onrender.com"
+            ]
         )
 
     @app.middleware("http")
