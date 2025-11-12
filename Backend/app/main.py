@@ -189,7 +189,7 @@ app = FastAPI(
 )
 
 origins = [
-    "https://inspire-4.onrender.com",
+    "https://inspire.software/",
     "http://localhost",
     "http://localhost:8000",
     "http://127.0.0.1:8000",

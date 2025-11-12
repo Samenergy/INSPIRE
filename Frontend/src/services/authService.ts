@@ -3,7 +3,7 @@
  * Handles SME signup, login, and token management
  */
 
-const API_BASE_URL = 'http://localhost:8000/api/auth';
+const API_BASE_URL = 'http://46.62.228.201:8000/api/auth';
 
 export interface SMESignupBasicData {
   name: string;

@@ -3,7 +3,7 @@
  * Handles fetching companies from the backend API
  */
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = 'http://46.62.228.201:8000/api/v1';
 
 export interface Company {
   company_id: number;

@@ -172,7 +172,7 @@ const Dashboard: React.FC = () => {
 
         // Fetch dashboard stats
         const statsResponse = await fetch(
-          `http://localhost:8000/api/inspire/dashboard/stats?sme_id=${user.sme_id}`,
+          `http://46.62.228.201:8000/api/inspire/dashboard/stats?sme_id=${user.sme_id}`,
           {
             headers: {
               'Content-Type': 'application/json',
@@ -194,7 +194,7 @@ const Dashboard: React.FC = () => {
 
         // Fetch recent activity
         const activityResponse = await fetch(
-          `http://localhost:8000/api/inspire/dashboard/activity?limit=10`,
+          `http://46.62.228.201:8000/api/inspire/dashboard/activity?limit=10`,
           {
             headers: {
               'Content-Type': 'application/json',
