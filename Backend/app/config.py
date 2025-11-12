@@ -24,7 +24,7 @@ class Settings(BaseSettings):
         env_parse_none_str='None'
     )
 
-    app_name: str = Field(default="Company Data Scraping Service", env="APP_NAME")
+    app_name: str = Field(default="Inspire", env="APP_NAME")
     app_version: str = Field(default="1.0.0", env="APP_VERSION")
     debug: bool = Field(default=True, env="DEBUG")
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
