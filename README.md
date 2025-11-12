@@ -88,6 +88,10 @@ npm run dev    # Local: http://localhost:3000
 - **Frontend:**  
   Start development server: `npm run dev`
 
+### Live Backend Endpoint
+
+- Swagger Docs: [http://46.62.228.201:8000/docs](http://46.62.228.201:8000/docs)
+
 ## Demo Video (5 Minutes)
 
 *A 5-minute demo recording is available here: [[VIDEO LINK HERE](https://www.youtube.com/watch?v=1FpCMQ7yAhA)]*  
