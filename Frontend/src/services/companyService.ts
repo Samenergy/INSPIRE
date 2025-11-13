@@ -3,9 +3,7 @@
  * Handles fetching companies from the backend API
  */
 
-import { V1_API_URL } from './apiConfig';
-
-const API_BASE_URL = V1_API_URL;
+const API_BASE_URL = 'http://46.62.228.201:8000/api/v1';
 
 export interface Company {
   company_id: number;

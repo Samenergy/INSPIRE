@@ -19,7 +19,6 @@ import {
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { INSPIRE_API_URL } from '../../services/apiConfig';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -173,7 +172,7 @@ const Dashboard: React.FC = () => {
 
         // Fetch dashboard stats
         const statsResponse = await fetch(
-          `${INSPIRE_API_URL}/dashboard/stats?sme_id=${user.sme_id}`,
+          `http://46.62.228.201:8000/api/inspire/dashboard/stats?sme_id=${user.sme_id}`,
           {
             headers: {
               'Content-Type': 'application/json',
@@ -195,7 +194,7 @@ const Dashboard: React.FC = () => {
 
         // Fetch recent activity
         const activityResponse = await fetch(
-          `${INSPIRE_API_URL}/dashboard/activity?limit=10`,
+          `http://46.62.228.201:8000/api/inspire/dashboard/activity?limit=10`,
           {
             headers: {
               'Content-Type': 'application/json',

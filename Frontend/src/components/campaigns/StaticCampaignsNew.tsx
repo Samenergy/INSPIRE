@@ -24,7 +24,6 @@ import {
 import { styled } from '@mui/material/styles';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { OUTREACH_API_URL } from '../../services/apiConfig';
 import { BORDER_RADIUS, TRANSITIONS } from '../ui/common/constants';
 import { Dialog } from '../ui/common/Dialog';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -254,7 +253,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
 
       try {
         setLoading(true);
-        const response = await fetch(`${OUTREACH_API_URL}/campaigns`, {
+        const response = await fetch('http://46.62.228.201:8000/api/outreach/campaigns', {
           headers: {
             'Content-Type': 'application/json',
             ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
