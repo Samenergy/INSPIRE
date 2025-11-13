@@ -931,7 +931,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch companies from backend API filtered by sme_id
       const response = await fetch(
-        `http://46.62.228.201:8000/api/inspire/companies?sme_id=${user.sme_id}`,
+        `https://api.inspire.software/api/inspire/companies?sme_id=${user.sme_id}`,
         {
         headers: {
             "Content-Type": "application/json",
@@ -1067,7 +1067,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     const pollProgress = async () => {
       try {
         const progressResponse = await fetch(
-          `http://46.62.228.201:8000/api/v1/unified/unified-analysis/progress/${jobId}`,
+          `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${jobId}`,
           {
             headers: {
               ...(localStorage.getItem("auth_token")
@@ -1287,7 +1287,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       setLoading(true);
       
       const response = await fetch(
-        `http://46.62.228.201:8000/api/inspire/companies/${menuCompany.id}`,
+        `https://api.inspire.software/api/inspire/companies/${menuCompany.id}`,
         {
           method: "PUT",
         headers: {
@@ -1401,7 +1401,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       }
 
       const response = await fetch(
-        "http://46.62.228.201:8000/api/v1/unified/unified-analysis",
+        "https://api.inspire.software/api/v1/unified/unified-analysis",
         {
           method: "POST",
         headers: {
@@ -1653,7 +1653,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       formData.append("outreach_type", outreachType);
 
       const response = await fetch(
-        "http://46.62.228.201:8000/api/outreach/generate",
+        "https://api.inspire.software/api/outreach/generate",
         {
           method: "POST",
         headers: {
@@ -1713,7 +1713,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch company details (includes company_info, strengths, opportunities)
       const companyResponse = await fetch(
-        `http://46.62.228.201:8000/api/inspire/companies/${companyId}`,
+        `https://api.inspire.software/api/inspire/companies/${companyId}`,
         {
           headers: {
             ...(localStorage.getItem("auth_token")
@@ -1727,7 +1727,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       
       // Fetch latest analysis
       const analysisResponse = await fetch(
-        `http://46.62.228.201:8000/api/inspire/companies/${companyId}/analysis`,
+        `https://api.inspire.software/api/inspire/companies/${companyId}/analysis`,
         {
         headers: {
             ...(localStorage.getItem("auth_token")
@@ -1741,7 +1741,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch articles grouped by classification
       const articlesResponse = await fetch(
-        `http://46.62.228.201:8000/api/inspire/companies/${companyId}/articles`,
+        `https://api.inspire.software/api/inspire/companies/${companyId}/articles`,
         {
         headers: {
             ...(localStorage.getItem("auth_token")
@@ -1940,7 +1940,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   ) => {
     try {
       const response = await fetch(
-        `http://46.62.228.201:8000/api/inspire/companies/${companyId}`,
+        `https://api.inspire.software/api/inspire/companies/${companyId}`,
         {
           method: "PUT",
         headers: {
@@ -2032,7 +2032,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // 1. Create the company in the backend
       const response = await fetch(
-        "http://46.62.228.201:8000/api/inspire/companies",
+        "https://api.inspire.software/api/inspire/companies",
         {
           method: "POST",
         headers: {
@@ -2102,7 +2102,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           startAnalysisProgressPolling(backgroundJobId, newCompanyId);
 
           const analysisResponse = await fetch(
-            "http://46.62.228.201:8000/api/v1/unified/unified-analysis",
+            "https://api.inspire.software/api/v1/unified/unified-analysis",
             {
               method: "POST",
           headers: {
@@ -2536,7 +2536,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           // Delete each company via API
           for (const companyId of selectedCompanies) {
             const response = await fetch(
-              `http://46.62.228.201:8000/api/inspire/companies/${companyId}`,
+              `https://api.inspire.software/api/inspire/companies/${companyId}`,
               {
                 method: "DELETE",
               headers: {
@@ -2582,7 +2582,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       // Delete single company
       try {
         const response = await fetch(
-          `http://46.62.228.201:8000/api/inspire/companies/${companyToDelete}`,
+          `https://api.inspire.software/api/inspire/companies/${companyToDelete}`,
           {
             method: "DELETE",
           headers: {

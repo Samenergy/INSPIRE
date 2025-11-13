@@ -111,7 +111,7 @@ Backend/
 
 ### Frontend API URLs
 - HTTPS: `https://46.62.228.201` (port 443)
-- HTTP: `http://46.62.228.201:8000` (development)
+- HTTP: `https://api.inspire.software` (development)
 
 ## ⚠️ Important Notes
 

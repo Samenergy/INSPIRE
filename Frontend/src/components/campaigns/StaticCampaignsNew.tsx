@@ -253,7 +253,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
 
       try {
         setLoading(true);
-        const response = await fetch('http://46.62.228.201:8000/api/outreach/campaigns', {
+        const response = await fetch('https://api.inspire.software/api/outreach/campaigns', {
           headers: {
             'Content-Type': 'application/json',
             ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
