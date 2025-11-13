@@ -34,6 +34,7 @@ def setup_middleware(app: FastAPI):
                 "127.0.0.1",
                 "0.0.0.0",
                 "46.62.228.201",
+                "api.inspire.software",
                 "inspire-4.onrender.com"
             ]
         )
