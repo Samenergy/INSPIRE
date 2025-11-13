@@ -75,3 +75,15 @@ htmlcov/
 
 exports/
 logs/
+
+# SSL Certificates (NEVER commit private keys!)
+ssl/*.pem
+ssl/*.key
+ssl/*.crt
+ssl/*.p12
+ssl/*.pfx
+certbot/
+*.pem
+*.key
+*.crt
+!requirements.txt
