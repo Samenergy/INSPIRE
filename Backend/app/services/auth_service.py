@@ -39,11 +39,26 @@ class AuthService:
     def get_password_hash(self, password: str) -> str:
         """Hash a password (bcrypt has a 72-byte limit)"""
         # Bcrypt has a 72-byte limit, so truncate if necessary
+        # Convert to bytes to check length
         password_bytes = password.encode('utf-8')
         if len(password_bytes) > 72:
+            # Truncate to exactly 72 bytes
             password_bytes = password_bytes[:72]
+            # Decode back to string, ignoring any incomplete UTF-8 sequences at the end
             password = password_bytes.decode('utf-8', errors='ignore')
-        return pwd_context.hash(password)
+            logger.debug(f"Password truncated from {len(password.encode('utf-8'))} to 72 bytes for bcrypt compatibility")
+        
+        # Hash the (possibly truncated) password
+        try:
+            return pwd_context.hash(password)
+        except ValueError as e:
+            # If still too long (shouldn't happen, but just in case), truncate more aggressively
+            if "longer than 72 bytes" in str(e):
+                logger.warning(f"Password still too long after truncation, using first 72 bytes with ignore errors")
+                password_bytes = password.encode('utf-8')[:72]
+                password = password_bytes.decode('utf-8', errors='ignore')
+                return pwd_context.hash(password)
+            raise
     
     def create_access_token(self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
         """Create a JWT access token"""
