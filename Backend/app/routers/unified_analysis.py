@@ -418,10 +418,29 @@ async def unified_company_analysis(
         
         # Convert RAG category results to strings for database storage
         def format_category_for_db(category_result):
-            """Format a RAG category result for database storage"""
+            """Format a RAG category result for database storage, truncating if too large"""
             if not category_result or 'data' not in category_result:
                 return ''
-            return json.dumps(category_result['data'], indent=2)
+            # MySQL TEXT field max size is 65,535 bytes, but we'll use 60KB to be safe
+            # Account for UTF-8 encoding (some chars are multi-byte)
+            max_bytes = 60 * 1024  # 60KB
+            json_str = json.dumps(category_result['data'], indent=2)
+            
+            # Truncate if too large
+            if len(json_str.encode('utf-8')) > max_bytes:
+                # Truncate string, ensuring we don't break UTF-8 encoding
+                encoded = json_str.encode('utf-8')
+                truncated = encoded[:max_bytes]
+                # Remove any incomplete UTF-8 sequences at the end
+                while truncated and truncated[-1] & 0x80 and not (truncated[-1] & 0x40):
+                    truncated = truncated[:-1]
+                json_str = truncated.decode('utf-8', errors='ignore')
+                # Try to close any open JSON structures
+                if json_str.count('{') > json_str.count('}'):
+                    json_str += '\n' + '  ' * (json_str.count('{') - json_str.count('}') - 1) + '}'
+                logger.warning(f"Truncated category data from {len(encoded)} to {len(truncated)} bytes")
+            
+            return json_str
         
         # STEP 5A: Save Company Info, Strengths, Opportunities in COMPANY table
         try:

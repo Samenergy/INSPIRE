@@ -386,19 +386,21 @@ class RAGAnalysisService:
                 }
             }
             
-            response = requests.post(
-                f"{self.ollama_host}/api/generate",
-                json=payload,
-                timeout=120
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                generated_text = result.get('response', '')
-                return generated_text
-            else:
-                logger.error(f"LLM API error: {response.status_code}")
-                return None
+            # Use a session for connection pooling and proper cleanup
+            with requests.Session() as session:
+                response = session.post(
+                    f"{self.ollama_host}/api/generate",
+                    json=payload,
+                    timeout=120
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    generated_text = result.get('response', '')
+                    return generated_text
+                else:
+                    logger.error(f"LLM API error: {response.status_code}")
+                    return None
         
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
@@ -410,9 +412,47 @@ class RAGAnalysisService:
             logger.warning("Empty response from LLM")
             return None
         
+        def strip_json_comments(json_str: str) -> str:
+            """Remove single-line and multi-line comments from JSON string"""
+            # Remove single-line comments (// ...) - but preserve // inside strings
+            lines = json_str.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                # Find // that's not inside a string
+                in_string = False
+                escape_next = False
+                comment_pos = -1
+                for i, char in enumerate(line):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                    if not in_string and char == '/' and i + 1 < len(line) and line[i + 1] == '/':
+                        comment_pos = i
+                        break
+                if comment_pos >= 0:
+                    line = line[:comment_pos].rstrip()
+                cleaned_lines.append(line)
+            json_str = '\n'.join(cleaned_lines)
+            
+            # Remove multi-line comments (/* ... */)
+            while '/*' in json_str:
+                start = json_str.find('/*')
+                end = json_str.find('*/', start)
+                if end == -1:
+                    break
+                json_str = json_str[:start] + json_str[end + 2:]
+            
+            return json_str
+        
         # Try direct JSON parsing
         try:
-            return json.loads(response.strip())
+            cleaned = strip_json_comments(response.strip())
+            return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
         
@@ -427,6 +467,7 @@ class RAGAnalysisService:
                 match = re.search(pattern, response, re.DOTALL)
                 if match:
                     json_str = match.group(1)
+                    json_str = strip_json_comments(json_str)
                     return json.loads(json_str)
             except (json.JSONDecodeError, AttributeError, IndexError):
                 continue
@@ -441,6 +482,7 @@ class RAGAnalysisService:
                 match = re.search(pattern, response, re.DOTALL)
                 if match:
                     json_str = match.group(0)
+                    json_str = strip_json_comments(json_str)
                     return json.loads(json_str)
             except (json.JSONDecodeError, AttributeError, IndexError):
                 continue
@@ -453,7 +495,9 @@ class RAGAnalysisService:
                 try:
                     match = re.search(r'\{.*\}', json_part, re.DOTALL)
                     if match:
-                        return json.loads(match.group(0))
+                        json_str = match.group(0)
+                        json_str = strip_json_comments(json_str)
+                        return json.loads(json_str)
                 except json.JSONDecodeError:
                     continue
         

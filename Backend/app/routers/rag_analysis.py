@@ -115,38 +115,42 @@ async def rag_company_analysis(
             logger.info("🔍 Fetching full article content from URLs...")
             content_fetcher = ArticleContentFetcher()
             
-            articles_with_urls = []
-            for _, row in df.iterrows():
-                url = str(row.get('url', ''))
-                title = str(row.get('title', ''))
-                content = str(row.get('content', ''))
+            try:
+                articles_with_urls = []
+                for _, row in df.iterrows():
+                    url = str(row.get('url', ''))
+                    title = str(row.get('title', ''))
+                    content = str(row.get('content', ''))
+                    
+                    if url and url.startswith('http'):
+                        articles_with_urls.append({
+                            'title': title,
+                            'url': url,
+                            'snippet': content
+                        })
                 
-                if url and url.startswith('http'):
-                    articles_with_urls.append({
-                        'title': title,
-                        'url': url,
-                        'snippet': content
+                # Fetch up to 20 articles
+                articles_to_fetch = articles_with_urls[:20]
+                logger.info(f"📰 Fetching full content for {len(articles_to_fetch)} articles...")
+                
+                for article_data in articles_to_fetch:
+                    article_dict = {
+                        'url': article_data['url'],
+                        'title': article_data['title'],
+                        'content': article_data['snippet']
+                    }
+                    
+                    enhanced_article = await content_fetcher.fetch_article_content(article_dict)
+                    
+                    articles.append({
+                        'title': str(enhanced_article.get('title', '')),
+                        'content': str(enhanced_article.get('content', ''))
                     })
-            
-            # Fetch up to 20 articles
-            articles_to_fetch = articles_with_urls[:20]
-            logger.info(f"📰 Fetching full content for {len(articles_to_fetch)} articles...")
-            
-            for article_data in articles_to_fetch:
-                article_dict = {
-                    'url': article_data['url'],
-                    'title': article_data['title'],
-                    'content': article_data['snippet']
-                }
                 
-                enhanced_article = await content_fetcher.fetch_article_content(article_dict)
-                
-                articles.append({
-                    'title': str(enhanced_article.get('title', '')),
-                    'content': str(enhanced_article.get('content', ''))
-                })
-            
-            logger.info(f"✅ {len(articles)} articles ready for RAG analysis")
+                logger.info(f"✅ {len(articles)} articles ready for RAG analysis")
+            finally:
+                # Ensure session is closed
+                await content_fetcher.close()
         else:
             # Use CSV content directly
             for _, row in df.iterrows():

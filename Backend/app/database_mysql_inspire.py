@@ -27,7 +27,7 @@ class MySQLInspireConnection:
         
     def get_connection_config(self) -> Dict[str, Any]:
         """Get database connection configuration"""
-        return {
+        config = {
             'host': settings.db_host,
             'port': settings.db_port,
             'user': settings.db_user,
@@ -41,6 +41,17 @@ class MySQLInspireConnection:
             'read_timeout': 30,
             'write_timeout': 30
         }
+        
+        # Set max_allowed_packet to 64MB to handle large analysis data
+        # This is done via init_command since it's a session variable
+        try:
+            import pymysql
+            # Use init_command to set max_allowed_packet for this connection
+            config['init_command'] = "SET SESSION max_allowed_packet=67108864"  # 64MB
+        except:
+            pass
+        
+        return config
     
     @asynccontextmanager
     async def get_connection(self):
