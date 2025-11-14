@@ -43,40 +43,52 @@ class AuthService:
         password_bytes = password.encode('utf-8')
         original_length = len(password_bytes)
         
+        # Truncate to exactly 72 bytes if longer
         if original_length > 72:
-            # Truncate to 72 bytes, then ensure re-encoding is still <= 72 bytes
-            # This handles cases where truncation breaks multi-byte UTF-8 characters
-            truncated_bytes = password_bytes[:72]
-            password = truncated_bytes.decode('utf-8', errors='ignore')
+            # Truncate to 72 bytes
+            password_bytes = password_bytes[:72]
+            # Decode back to string, handling any incomplete UTF-8 sequences
+            password = password_bytes.decode('utf-8', errors='ignore')
             
-            # Verify the truncated password encodes to <= 72 bytes
-            # If not, keep removing bytes until it does
-            while len(password.encode('utf-8')) > 72:
-                truncated_bytes = truncated_bytes[:-1]
-                if len(truncated_bytes) == 0:
-                    # Fallback: use ASCII-only truncation
-                    password = password_bytes[:72].decode('ascii', errors='ignore')
+            # Critical: Verify the decoded password re-encodes to <= 72 bytes
+            # If it doesn't, keep removing bytes until it does
+            encoded_length = len(password.encode('utf-8'))
+            attempts = 0
+            while encoded_length > 72 and attempts < 10:
+                password_bytes = password_bytes[:-1]
+                if len(password_bytes) == 0:
                     break
-                password = truncated_bytes.decode('utf-8', errors='ignore')
+                password = password_bytes.decode('utf-8', errors='ignore')
+                encoded_length = len(password.encode('utf-8'))
+                attempts += 1
             
-            logger.info(f"Password truncated from {original_length} to {len(password.encode('utf-8'))} bytes for bcrypt compatibility")
-        
-        # Hash the (possibly truncated) password
-        # Double-check the length one more time before hashing
-        final_bytes = password.encode('utf-8')
-        if len(final_bytes) > 72:
-            # Last resort: force truncation to 72 bytes
-            password = final_bytes[:72].decode('utf-8', errors='ignore')
-            logger.warning(f"Password forced to 72 bytes: {len(password.encode('utf-8'))} bytes")
-        
-        try:
-            return pwd_context.hash(password)
-        except ValueError as e:
-            # If still too long (shouldn't happen), use bytes directly
-            if "longer than 72 bytes" in str(e):
-                logger.error(f"Password still too long after all truncation attempts. Original: {original_length} bytes")
-                # Final fallback: use first 72 bytes as ASCII
+            final_length = len(password.encode('utf-8'))
+            logger.info(f"Password truncated from {original_length} to {final_length} bytes (attempts: {attempts})")
+            
+            # Final safety check: if still too long, use ASCII-only
+            if final_length > 72:
                 password = password_bytes[:72].decode('ascii', errors='ignore')
+                logger.warning(f"Using ASCII-only truncation: {len(password.encode('utf-8'))} bytes")
+        
+        # Final verification before hashing
+        final_check = password.encode('utf-8')
+        if len(final_check) > 72:
+            logger.error(f"CRITICAL: Password still {len(final_check)} bytes after truncation! Forcing to 72 bytes.")
+            password = final_check[:72].decode('utf-8', errors='ignore')
+        
+        # Hash the password
+        try:
+            result = pwd_context.hash(password)
+            logger.debug(f"Password hashed successfully. Final length: {len(password.encode('utf-8'))} bytes")
+            return result
+        except ValueError as e:
+            error_msg = str(e)
+            if "longer than 72 bytes" in error_msg:
+                logger.error(f"Password hashing failed: {error_msg}. Password length: {len(password.encode('utf-8'))} bytes")
+                # Last resort: use bytes directly with ASCII
+                password_bytes_ascii = password.encode('ascii', errors='ignore')[:72]
+                password = password_bytes_ascii.decode('ascii', errors='ignore')
+                logger.warning(f"Retrying with ASCII-only password: {len(password.encode('utf-8'))} bytes")
                 return pwd_context.hash(password)
             raise
     
