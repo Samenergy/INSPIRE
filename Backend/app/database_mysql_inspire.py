@@ -63,16 +63,24 @@ class MySQLInspireConnection:
                 config = self.get_connection_config()
                 # Remove init_command as pymysql doesn't support it directly
                 config.pop('init_command', None)
-                connection = pymysql.connect(**config)
-                # Set max_allowed_packet after connection
                 try:
-                    with connection.cursor() as cursor:
-                        cursor.execute("SET SESSION max_allowed_packet=67108864")  # 64MB
-                        connection.commit()
+                    connection = pymysql.connect(**config)
+                    # Set max_allowed_packet after connection (server should already have it set, but this ensures session level)
+                    try:
+                        with connection.cursor() as cursor:
+                            cursor.execute("SET SESSION max_allowed_packet=67108864")  # 64MB
+                            connection.commit()
+                    except Exception as e:
+                        logger.warning(f"Failed to set max_allowed_packet (server may already have it set): {e}")
+                    self.current_connections += 1
+                    logger.info(f"Created new MySQL connection. Total connections: {self.current_connections}")
                 except Exception as e:
-                    logger.warning(f"Failed to set max_allowed_packet: {e}")
-                self.current_connections += 1
-                logger.info(f"Created new MySQL connection. Total connections: {self.current_connections}")
+                    error_str = str(e)
+                    if "max_allowed_packet" in error_str.lower() or "1153" in error_str:
+                        logger.error(f"MySQL connection failed due to packet size: {error_str}")
+                        logger.error("This suggests data is too large even before query execution.")
+                        logger.error("Ensure MySQL server has max_allowed_packet set to at least 64MB in docker-compose.yml")
+                    raise
             
             yield connection
             
@@ -133,7 +141,12 @@ class MySQLInspireConnection:
                     cursor.execute(query, params)
                     return cursor.lastrowid
         except Exception as e:
-            logger.error(f"Error executing insert: {str(e)}")
+            error_str = str(e)
+            # Check for packet size error
+            if "max_allowed_packet" in error_str.lower() or "1153" in error_str:
+                logger.error(f"Packet size error: {error_str}")
+                logger.warning("Data too large for MySQL packet. Consider reducing data size or increasing max_allowed_packet.")
+            logger.error(f"Error executing insert: {error_str}")
             raise
     
     async def execute_update(self, query: str, params: Optional[tuple] = None) -> int:
@@ -144,7 +157,12 @@ class MySQLInspireConnection:
                     cursor.execute(query, params)
                     return cursor.rowcount
         except Exception as e:
-            logger.error(f"Error executing update: {str(e)}")
+            error_str = str(e)
+            # Check for packet size error
+            if "max_allowed_packet" in error_str.lower() or "1153" in error_str:
+                logger.error(f"Packet size error: {error_str}")
+                logger.warning("Data too large for MySQL packet. Consider reducing data size or increasing max_allowed_packet.")
+            logger.error(f"Error executing update: {error_str}")
             raise
     
     async def execute_many(self, query: str, params_list: List[tuple]) -> int:
