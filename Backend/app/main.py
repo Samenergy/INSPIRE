@@ -202,6 +202,7 @@ app = FastAPI(
 
 origins = [
     "https://inspire.software",
+    "https://inspire-eight-rho.vercel.app",
     "https://www.inspire.software",
     "http://localhost",
     "http://localhost:8000",
