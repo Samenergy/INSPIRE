@@ -39,9 +39,11 @@ class AuthService:
     def get_password_hash(self, password: str) -> str:
         """Hash a password (bcrypt has a 72-byte limit)"""
         # Bcrypt has a 72-byte limit, so truncate if necessary
+        logger.info(f"get_password_hash called with password length: {len(password)} characters")
         # Convert to bytes to check length
         password_bytes = password.encode('utf-8')
         original_length = len(password_bytes)
+        logger.info(f"Password is {original_length} bytes when encoded as UTF-8")
         
         # Truncate to exactly 72 bytes if longer
         if original_length > 72:
