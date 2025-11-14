@@ -65,13 +65,8 @@ class MySQLInspireConnection:
                 config.pop('init_command', None)
                 try:
                     connection = pymysql.connect(**config)
-                    # Set max_allowed_packet after connection (server should already have it set, but this ensures session level)
-                    try:
-                        with connection.cursor() as cursor:
-                            cursor.execute("SET SESSION max_allowed_packet=67108864")  # 64MB
-                            connection.commit()
-                    except Exception as e:
-                        logger.warning(f"Failed to set max_allowed_packet (server may already have it set): {e}")
+                    # max_allowed_packet is set at server level in docker-compose.yml
+                    # No need to set it per session (and it's read-only anyway)
                     self.current_connections += 1
                     logger.info(f"Created new MySQL connection. Total connections: {self.current_connections}")
                 except Exception as e:

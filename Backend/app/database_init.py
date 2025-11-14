@@ -120,6 +120,9 @@ def create_all_tables() -> bool:
                         description TEXT,
                         industry VARCHAR(100),
                         website VARCHAR(255),
+                        company_info TEXT,
+                        strengths TEXT,
+                        opportunities TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                         
@@ -136,6 +139,39 @@ def create_all_tables() -> bool:
                 logger.info("✅ Created 'company' table")
         else:
             logger.info("✅ 'company' table already exists")
+            # Add missing columns if they don't exist (migration)
+            with connection.cursor() as cursor:
+                # Check and add company_info column
+                cursor.execute("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = 'company' AND column_name = 'company_info'
+                """, (settings.db_name,))
+                if cursor.fetchone()['count'] == 0:
+                    cursor.execute("ALTER TABLE company ADD COLUMN company_info TEXT AFTER website")
+                    logger.info("✅ Added 'company_info' column to 'company' table")
+                
+                # Check and add strengths column
+                cursor.execute("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = 'company' AND column_name = 'strengths'
+                """, (settings.db_name,))
+                if cursor.fetchone()['count'] == 0:
+                    cursor.execute("ALTER TABLE company ADD COLUMN strengths TEXT AFTER company_info")
+                    logger.info("✅ Added 'strengths' column to 'company' table")
+                
+                # Check and add opportunities column
+                cursor.execute("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.columns
+                    WHERE table_schema = %s AND table_name = 'company' AND column_name = 'opportunities'
+                """, (settings.db_name,))
+                if cursor.fetchone()['count'] == 0:
+                    cursor.execute("ALTER TABLE company ADD COLUMN opportunities TEXT AFTER strengths")
+                    logger.info("✅ Added 'opportunities' column to 'company' table")
+                
+                connection.commit()
         
         # Create Analysis table
         if not table_exists(connection, 'analysis'):
