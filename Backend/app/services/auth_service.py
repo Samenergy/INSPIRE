@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
 import logging
+import bcrypt
 
 from app.config import settings
 from app.models import SMESignupBasic, SMESignupComplete, SMEUpdate, SMELogin, TokenData
@@ -19,7 +20,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use bcrypt directly to avoid passlib's bug detection issues
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT settings
 SECRET_KEY = getattr(settings, 'jwt_secret', 'your-secret-key-here')
@@ -34,7 +36,16 @@ class AuthService:
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash"""
-        return pwd_context.verify(plain_password, hashed_password)
+        try:
+            # Truncate password to 72 bytes if needed
+            password_bytes = plain_password.encode('utf-8')
+            if len(password_bytes) > 72:
+                password_bytes = password_bytes[:72]
+                plain_password = password_bytes.decode('utf-8', errors='ignore')
+            return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+        except Exception as e:
+            logger.error(f"Password verification error: {e}")
+            return False
     
     def get_password_hash(self, password: str) -> str:
         """Hash a password (bcrypt has a 72-byte limit)"""
@@ -78,21 +89,31 @@ class AuthService:
             logger.error(f"CRITICAL: Password still {len(final_check)} bytes after truncation! Forcing to 72 bytes.")
             password = final_check[:72].decode('utf-8', errors='ignore')
         
-        # Hash the password
+        # Hash the password using bcrypt directly (bypassing passlib's bug detection)
         try:
-            result = pwd_context.hash(password)
-            logger.debug(f"Password hashed successfully. Final length: {len(password.encode('utf-8'))} bytes")
+            # Ensure password is bytes and <= 72 bytes
+            password_bytes = password.encode('utf-8')
+            if len(password_bytes) > 72:
+                password_bytes = password_bytes[:72]
+            
+            # Generate salt and hash using bcrypt directly
+            salt = bcrypt.gensalt()
+            hashed = bcrypt.hashpw(password_bytes, salt)
+            result = hashed.decode('utf-8')
+            
+            logger.info(f"Password hashed successfully using bcrypt directly. Final length: {len(password_bytes)} bytes")
             return result
-        except ValueError as e:
+        except Exception as e:
             error_msg = str(e)
-            if "longer than 72 bytes" in error_msg:
-                logger.error(f"Password hashing failed: {error_msg}. Password length: {len(password.encode('utf-8'))} bytes")
-                # Last resort: use bytes directly with ASCII
-                password_bytes_ascii = password.encode('ascii', errors='ignore')[:72]
-                password = password_bytes_ascii.decode('ascii', errors='ignore')
-                logger.warning(f"Retrying with ASCII-only password: {len(password.encode('utf-8'))} bytes")
-                return pwd_context.hash(password)
-            raise
+            logger.error(f"Password hashing failed: {error_msg}. Password length: {len(password.encode('utf-8'))} bytes")
+            # Last resort: use first 72 bytes as ASCII
+            password_bytes_ascii = password.encode('ascii', errors='ignore')[:72]
+            if len(password_bytes_ascii) == 0:
+                raise ValueError("Password cannot be empty after encoding")
+            salt = bcrypt.gensalt()
+            hashed = bcrypt.hashpw(password_bytes_ascii, salt)
+            logger.warning(f"Retrying with ASCII-only password: {len(password_bytes_ascii)} bytes")
+            return hashed.decode('utf-8')
     
     def create_access_token(self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
         """Create a JWT access token"""
