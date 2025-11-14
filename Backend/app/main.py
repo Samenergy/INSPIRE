@@ -164,6 +164,18 @@ async def lifespan(app: FastAPI):
     
     setup_logging()
     
+    # Initialize database (create database and tables if they don't exist)
+    try:
+        from app.database_init import initialize_database
+        print("📦 Initializing database...")
+        if initialize_database():
+            print("✅ Database initialized successfully")
+        else:
+            print("⚠️  Database initialization failed - check logs")
+    except Exception as e:
+        print(f"⚠️  Database initialization error: {e}")
+        print("   Continuing startup - database may need manual initialization")
+    
     # Start Ollama (required for RAG and LLM analysis)
     start_ollama()
     
