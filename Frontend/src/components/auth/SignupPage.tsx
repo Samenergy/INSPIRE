@@ -23,6 +23,7 @@ export default function SignupPage(): JSX.Element {
 
   const [confirmPassword, setConfirmPassword] = useState('');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -45,6 +46,19 @@ export default function SignupPage(): JSX.Element {
     }
   };
 
+  // Password requirements checker
+  const getPasswordRequirements = () => {
+    const password = formData.password;
+    const passwordBytes = new TextEncoder().encode(password).length;
+    
+    return {
+      hasMinLength: password.length >= 8,
+      hasMaxLength: password.length <= 100,
+      withinByteLimit: passwordBytes <= 72,
+      allValid: password.length >= 8 && password.length <= 100 && passwordBytes <= 72
+    };
+  };
+
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
@@ -60,8 +74,15 @@ export default function SignupPage(): JSX.Element {
 
     if (!formData.password) {
       errors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      errors.password = 'Password must be at least 8 characters long';
+    } else {
+      const requirements = getPasswordRequirements();
+      if (!requirements.hasMinLength) {
+        errors.password = 'Password must be at least 8 characters long';
+      } else if (!requirements.hasMaxLength) {
+        errors.password = 'Password must be no more than 100 characters long';
+      } else if (!requirements.withinByteLimit) {
+        errors.password = 'Password is too long (maximum 72 bytes). Please use a shorter password.';
+      }
     }
 
     if (!confirmPassword) {
@@ -180,11 +201,52 @@ export default function SignupPage(): JSX.Element {
                 required
                 value={formData.password}
                 onChange={handleInputChange}
+                onFocus={() => setShowPasswordRequirements(true)}
+                onBlur={() => {
+                  // Keep requirements visible if there's an error or password is being entered
+                  if (!formData.password || validationErrors.password) {
+                    setShowPasswordRequirements(true);
+                  } else {
+                    setShowPasswordRequirements(false);
+                  }
+                }}
                 className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                 placeholder="Create a password"
               />
               {validationErrors.password && (
                 <p className="mt-1 text-sm text-red-600">{validationErrors.password}</p>
+              )}
+              
+              {/* Password Requirements */}
+              {(showPasswordRequirements || formData.password) && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-xs font-medium text-gray-700 mb-2">Password Requirements:</p>
+                  <ul className="space-y-1 text-xs text-gray-600">
+                    <li className={`flex items-center ${getPasswordRequirements().hasMinLength ? 'text-green-600' : 'text-gray-500'}`}>
+                      <span className={`mr-2 ${getPasswordRequirements().hasMinLength ? 'text-green-500' : 'text-gray-400'}`}>
+                        {getPasswordRequirements().hasMinLength ? '✓' : '○'}
+                      </span>
+                      At least 8 characters
+                    </li>
+                    <li className={`flex items-center ${getPasswordRequirements().hasMaxLength ? 'text-green-600' : 'text-gray-500'}`}>
+                      <span className={`mr-2 ${getPasswordRequirements().hasMaxLength ? 'text-green-500' : 'text-gray-400'}`}>
+                        {getPasswordRequirements().hasMaxLength ? '✓' : '○'}
+                      </span>
+                      Maximum 100 characters
+                    </li>
+                    <li className={`flex items-center ${getPasswordRequirements().withinByteLimit ? 'text-green-600' : 'text-gray-500'}`}>
+                      <span className={`mr-2 ${getPasswordRequirements().withinByteLimit ? 'text-green-500' : 'text-gray-400'}`}>
+                        {getPasswordRequirements().withinByteLimit ? '✓' : '○'}
+                      </span>
+                      Maximum 72 bytes (use standard characters for best compatibility)
+                    </li>
+                  </ul>
+                  {formData.password && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Current length: {formData.password.length} characters, {new TextEncoder().encode(formData.password).length} bytes
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
