@@ -42,14 +42,8 @@ class MySQLInspireConnection:
             'write_timeout': 30
         }
         
-        # Set max_allowed_packet to 64MB to handle large analysis data
-        # This is done via init_command since it's a session variable
-        try:
-            import pymysql
-            # Use init_command to set max_allowed_packet for this connection
-            config['init_command'] = "SET SESSION max_allowed_packet=67108864"  # 64MB
-        except:
-            pass
+        # max_allowed_packet is set after connection in get_connection()
+        # since pymysql doesn't support init_command directly
         
         return config
     
@@ -66,7 +60,17 @@ class MySQLInspireConnection:
             
             # Create new connection if pool is empty or connection is dead
             if not connection:
-                connection = pymysql.connect(**self.get_connection_config())
+                config = self.get_connection_config()
+                # Remove init_command as pymysql doesn't support it directly
+                config.pop('init_command', None)
+                connection = pymysql.connect(**config)
+                # Set max_allowed_packet after connection
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SET SESSION max_allowed_packet=67108864")  # 64MB
+                        connection.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to set max_allowed_packet: {e}")
                 self.current_connections += 1
                 logger.info(f"Created new MySQL connection. Total connections: {self.current_connections}")
             

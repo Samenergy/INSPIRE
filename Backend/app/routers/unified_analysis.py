@@ -177,7 +177,11 @@ async def unified_company_analysis(
             
             # Use SerpAPI scraper directly
             serpapi_scraper = SerpApiScraper()
-            scrape_result = await serpapi_scraper.scrape_company(company_obj)
+            try:
+                scrape_result = await serpapi_scraper.scrape_company(company_obj)
+            finally:
+                # Ensure session is closed
+                await serpapi_scraper.close()
             
             # Get all scraped articles (up to max_articles)
             articles_data = scrape_result.news_articles[:max_articles]
@@ -421,23 +425,25 @@ async def unified_company_analysis(
             """Format a RAG category result for database storage, truncating if too large"""
             if not category_result or 'data' not in category_result:
                 return ''
-            # MySQL TEXT field max size is 65,535 bytes, but we'll use 60KB to be safe
-            # Account for UTF-8 encoding (some chars are multi-byte)
-            max_bytes = 60 * 1024  # 60KB
+            # MySQL TEXT field max size is 65,535 bytes, but we'll use 50KB to be extra safe
+            # Account for UTF-8 encoding (some chars are multi-byte) and multiple fields in one query
+            max_bytes = 50 * 1024  # 50KB per field
             json_str = json.dumps(category_result['data'], indent=2)
             
             # Truncate if too large
-            if len(json_str.encode('utf-8')) > max_bytes:
+            encoded = json_str.encode('utf-8')
+            if len(encoded) > max_bytes:
                 # Truncate string, ensuring we don't break UTF-8 encoding
-                encoded = json_str.encode('utf-8')
                 truncated = encoded[:max_bytes]
                 # Remove any incomplete UTF-8 sequences at the end
                 while truncated and truncated[-1] & 0x80 and not (truncated[-1] & 0x40):
                     truncated = truncated[:-1]
                 json_str = truncated.decode('utf-8', errors='ignore')
                 # Try to close any open JSON structures
-                if json_str.count('{') > json_str.count('}'):
-                    json_str += '\n' + '  ' * (json_str.count('{') - json_str.count('}') - 1) + '}'
+                open_braces = json_str.count('{') - json_str.count('}')
+                if open_braces > 0:
+                    # Add closing braces
+                    json_str += '\n' + '  ' * (open_braces - 1) + '}' * open_braces
                 logger.warning(f"Truncated category data from {len(encoded)} to {len(truncated)} bytes")
             
             return json_str
