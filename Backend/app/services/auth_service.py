@@ -132,7 +132,9 @@ class AuthService:
                 )
             
             # Hash the password
+            logger.info(f"About to hash password for signup: {sme_data.contact_email}, password length: {len(sme_data.password)} chars")
             password_hash = self.get_password_hash(sme_data.password)
+            logger.info(f"Password hashed successfully for: {sme_data.contact_email}")
             
             # Create SME in database with basic info only
             sme_id = await self.db.create_sme_with_password(
