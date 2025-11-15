@@ -104,7 +104,13 @@ class RAGAnalysisService:
         # Configuration
         self.milvus_host = milvus_host
         self.milvus_port = milvus_port
-        self.ollama_host = ollama_host
+        
+        # Normalize Ollama URL - ensure it has protocol and proper format
+        self.ollama_host = ollama_host.rstrip('/')
+        if not self.ollama_host.startswith(('http://', 'https://')):
+            # If no protocol, assume http://
+            self.ollama_host = f'http://{self.ollama_host}'
+        
         self.llm_model = llm_model
         
         # Hyperparameters
@@ -114,7 +120,7 @@ class RAGAnalysisService:
             'top_k': 5,
             'temperature': 0.3,
             'max_tokens': 1000,
-            'similarity_threshold': 0.2
+            'similarity_threshold': 0.1  # Lowered from 0.2 to allow more chunks through
         }
         
         # Initialize embedding model
@@ -341,12 +347,28 @@ class RAGAnalysisService:
         )
         
         chunks = []
+        threshold = self.hyperparameters['similarity_threshold']
+        min_threshold = 0.05  # Absolute minimum to avoid completely irrelevant chunks
+        
         for hit in results[0]:
-            if hit.distance >= self.hyperparameters['similarity_threshold']:
+            similarity = float(hit.distance)
+            # Use threshold, but be more lenient if we have few chunks
+            if similarity >= threshold or (len(chunks) == 0 and similarity >= min_threshold):
                 chunks.append({
                     'text': hit.entity.get('chunk_text'),
                     'title': hit.entity.get('article_title'),
-                    'similarity': float(hit.distance)
+                    'similarity': similarity
+                })
+        
+        # If we still have no chunks, include at least the top result if above minimum
+        if not chunks and len(results[0]) > 0:
+            top_hit = results[0][0]
+            top_similarity = float(top_hit.distance)
+            if top_similarity >= min_threshold:
+                chunks.append({
+                    'text': top_hit.entity.get('chunk_text'),
+                    'title': top_hit.entity.get('article_title'),
+                    'similarity': top_similarity
                 })
         
         return chunks
@@ -359,52 +381,100 @@ class RAGAnalysisService:
         top_indices = np.argsort(similarities)[::-1][:top_k]
         
         chunks = []
+        threshold = self.hyperparameters['similarity_threshold']
+        min_threshold = 0.05  # Absolute minimum to avoid completely irrelevant chunks
+        
         for idx in top_indices:
-            if similarities[idx] >= self.hyperparameters['similarity_threshold']:
+            similarity = float(similarities[idx])
+            # Use threshold, but if we have very few chunks, be more lenient
+            # Always include top result if it's above minimum threshold
+            if similarity >= threshold or (len(chunks) == 0 and similarity >= min_threshold):
                 chunk = self.in_memory_chunks[idx]
                 chunks.append({
                     'text': chunk['text'],
                     'title': chunk['title'],
-                    'similarity': float(similarities[idx])
+                    'similarity': similarity
+                })
+        
+        # If we still have no chunks but have some with reasonable similarity, include at least the top one
+        if not chunks and len(top_indices) > 0:
+            top_similarity = float(similarities[top_indices[0]])
+            if top_similarity >= min_threshold:
+                chunk = self.in_memory_chunks[top_indices[0]]
+                chunks.append({
+                    'text': chunk['text'],
+                    'title': chunk['title'],
+                    'similarity': top_similarity
                 })
         
         return chunks
     
     def _call_llm(self, prompt: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> Optional[str]:
-        """Call Llama-3 via Ollama API"""
+        """Call Llama-3 via Ollama API with fallback for localhost/ollama hostname"""
         temp = temperature if temperature is not None else self.hyperparameters['temperature']
         max_tok = max_tokens if max_tokens is not None else self.hyperparameters['max_tokens']
         
-        try:
-            payload = {
-                "model": self.llm_model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": temp,
-                    "num_predict": max_tok
-                }
+        payload = {
+            "model": self.llm_model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": temp,
+                "num_predict": max_tok
             }
-            
-            # Use a session for connection pooling and proper cleanup
-            with requests.Session() as session:
-                response = session.post(
-                    f"{self.ollama_host}/api/generate",
-                    json=payload,
-                    timeout=120
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    generated_text = result.get('response', '')
-                    return generated_text
-                else:
-                    logger.error(f"LLM API error: {response.status_code}")
-                    return None
+        }
         
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}")
-            return None
+        # Try multiple URLs in case of DNS/hostname issues
+        # First try the configured URL, then fallback to localhost or ollama
+        urls_to_try = [self.ollama_host]
+        
+        # Extract hostname and port to build fallback URLs
+        url_match = re.match(r'(https?://)([^:/]+)(:\d+)?(/.*)?$', self.ollama_host)
+        if url_match:
+            protocol, hostname, port, path = url_match.groups()
+            port = port or ':11434'  # Default Ollama port
+            path = path or ''
+            
+            # If configured URL uses 'ollama' hostname (Docker), also try 'localhost'
+            if 'ollama' in hostname and 'localhost' not in hostname:
+                localhost_url = f"{protocol}localhost{port}{path}"
+                urls_to_try.append(localhost_url)
+            # If configured URL uses 'localhost', also try 'ollama' (for Docker)
+            elif 'localhost' in hostname and 'ollama' not in hostname:
+                ollama_url = f"{protocol}ollama{port}{path}"
+                urls_to_try.append(ollama_url)
+        
+        # Try each URL until one works
+        last_error = None
+        for url in urls_to_try:
+            try:
+                # Use a session for connection pooling and proper cleanup
+                with requests.Session() as session:
+                    api_url = f"{url}/api/generate"
+                    logger.debug(f"Trying Ollama at: {api_url}")
+                    response = session.post(
+                        api_url,
+                        json=payload,
+                        timeout=120
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        generated_text = result.get('response', '')
+                        logger.debug(f"✅ Successfully connected to Ollama at: {url}")
+                        return generated_text
+                    else:
+                        logger.warning(f"LLM API error at {url}: {response.status_code}")
+                        last_error = Exception(f"HTTP {response.status_code}")
+            
+            except Exception as e:
+                logger.debug(f"Failed to connect to Ollama at {url}: {e}")
+                last_error = e
+                continue
+        
+        # All URLs failed
+        logger.error(f"LLM call failed for all URLs: {last_error}")
+        return None
     
     def _parse_json_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Robustly parse JSON from LLM response"""

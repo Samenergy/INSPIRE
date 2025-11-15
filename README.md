@@ -90,7 +90,7 @@ npm run dev    # Local: http://localhost:3000
 
 ### Live Backend Endpoint
 
-- Swagger Docs: [https://api.inspire.software/docs](https://api.inspire.software/docs)
+- Swagger Docs: [http://0.0.0.0:8000/docs](http://0.0.0.0:8000/docs)
 
 ## Demo Video (5 Minutes)
 

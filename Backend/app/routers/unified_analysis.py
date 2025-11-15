@@ -13,6 +13,7 @@ import pandas as pd
 import io
 from uuid import uuid4
 from datetime import datetime
+import asyncio
 
 router = APIRouter()
 
@@ -63,74 +64,21 @@ def finalize_analysis_progress(job_id: Optional[str], status: str, message: str)
         message=message,
     )
 
-@router.post(
-    "/unified-analysis",
-    summary="Unified Company Analysis (Scrape + Classify + RAG Analysis)",
-    description="""
-    **Complete one-endpoint solution for company analysis with RAG (Retrieval-Augmented Generation).**
-    
-    This endpoint orchestrates a complete analysis pipeline:
-    
-    **1. Google Scraping** (No LinkedIn)
-    - Scrapes company news and articles using SerpAPI/Google
-    - Retrieves up to 100 articles about the company
-    
-    **2. Article Classification Based on SME Objectives**
-    - Classifies articles into: Directly Relevant, Indirectly Useful, Not Relevant
-    - Uses your SME objectives to determine relevance
-    - Stores classified articles in the database
-    
-    **3. RAG Analysis (10 Categories)**
-    - Analyzes the company using RAG (Retrieval-Augmented Generation)
-    - Extracts 10 intelligence categories:
-      1. Latest Updates
-      2. Challenges
-      3. Decision Makers
-      4. Market Position
-      5. Future Plans
-      6. Action Plan (SME engagement steps)
-      7. Solution (SME offerings for their needs)
-      8. Company Info (5-sentence description)
-      9. Strengths (competitive advantages)
-      10. Opportunities (growth areas)
-    - Uses semantic retrieval + Llama 3.1 for extraction
-    - Stores results in the database
-    
-    **Step-by-step process:**
-    1. Scrape company data from Google (SerpAPI)
-    2. Classify articles based on your SME objectives
-    3. Store classified articles in the `article` table
-    4. Run RAG analysis (10 categories with vector retrieval)
-    5. Store analysis results in the `analysis` table
-    
-    **Important:**
-    - Only uses Google/SerpAPI (no LinkedIn scraping)
-    - Classification happens BEFORE analysis
-    - RAG provides actionable, SME-personalized insights
-    - Both articles and analysis are stored in database
-    - Uses `sme_id` to link everything to your SME
-    """,
-    response_description="Unified analysis with RAG completed successfully"
-)
-async def unified_company_analysis(
-    company_name: str = Form(..., description="Name of the company to analyze"),
-    company_location: str = Form(..., description="Location of the company"),
-    sme_id: int = Form(..., description="Your SME ID"),
-    sme_objective: str = Form(..., description="Your SME's objectives and capabilities"),
-    max_articles: int = Form(100, description="Maximum number of articles to scrape (default: 100)"),
-    company_id: Optional[int] = Form(None, description="Optional: Existing company ID to use (if not provided, will search by name)"),
-    job_id: Optional[str] = Form(None, description="Optional: Client-supplied job identifier for progress tracking"),
-):
+
+async def run_unified_analysis_background(
+    company_name: str,
+    company_location: str,
+    sme_id: int,
+    sme_objective: str,
+    max_articles: int,
+    company_id: Optional[int],
+    job_identifier: str,
+) -> None:
     """
-    Unified endpoint that:
-    1. Scrapes company data from Google (SerpAPI)
-    2. Classifies articles based on SME objectives
-    3. Stores classified articles in database
-    4. Performs comprehensive LLM analysis
-    5. Stores analysis results in database
+    Background task that runs the full unified analysis pipeline.
+    This function runs asynchronously and updates progress as it goes.
     """
     try:
-        job_identifier = job_id or f"{sme_id}-{company_name}-{uuid4().hex}"
         update_analysis_progress(
             job_identifier,
             10.0,
@@ -154,10 +102,12 @@ async def unified_company_analysis(
             # Check if SerpAPI key is configured
             from app.config import settings
             if not settings.serpapi_key:
-                raise HTTPException(
-                    status_code=500,
-                    detail="SerpAPI key is not configured. Please add SERPAPI_API_KEY to your .env file. Get a free key at https://serpapi.com/"
+                finalize_analysis_progress(
+                    job_identifier,
+                    "failed",
+                    "SerpAPI key is not configured. Please add SERPAPI_API_KEY to your .env file. Get a free key at https://serpapi.com/"
                 )
+                return
             
             # Create a company object for scraping
             from datetime import datetime as dt
@@ -194,21 +144,23 @@ async def unified_company_analysis(
             )
             
             if not articles_data:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No articles found for {company_name}. Please check if the company name and location are correct."
+                finalize_analysis_progress(
+                    job_identifier,
+                    "failed",
+                    f"No articles found for {company_name}. Please check if the company name and location are correct."
                 )
+                return
             
             logger.info(f"✅ Found {len(articles_data)} articles from Google")
             
-        except HTTPException:
-            raise
         except Exception as e:
             logger.error(f"Scraping failed: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to scrape articles: {str(e)}"
+            finalize_analysis_progress(
+                job_identifier,
+                "failed",
+                f"Failed to scrape articles: {str(e)}"
             )
+            return
         
         # ============================================
         # STEP 2: Classify Articles Based on SME Objectives
@@ -289,10 +241,20 @@ async def unified_company_analysis(
         if company_id:
             company = await inspire_db.get_company(company_id)
             if not company:
-                raise HTTPException(status_code=404, detail=f"Company with ID {company_id} not found")
+                finalize_analysis_progress(
+                    job_identifier,
+                    "failed",
+                    f"Company with ID {company_id} not found"
+                )
+                return
             # Verify it belongs to the correct SME
             if company.get('sme_id') and company['sme_id'] != sme_id:
-                raise HTTPException(status_code=403, detail="Company does not belong to this SME")
+                finalize_analysis_progress(
+                    job_identifier,
+                    "failed",
+                    "Company does not belong to this SME"
+                )
+                return
             logger.info(f"📝 Using provided company ID: {company_name} (ID: {company_id})")
         else:
             # Search by name, filtered by sme_id to avoid finding other SMEs' companies
@@ -524,97 +486,6 @@ async def unified_company_analysis(
             logger.error(f"Failed to store analysis: {e}")
             # Continue anyway, analysis is already complete
         
-        # ============================================
-        # Organize Articles by Classification
-        # ============================================
-        directly_relevant_articles = []
-        indirectly_useful_articles = []
-        not_relevant_articles = []
-        
-        for idx, row in df_classified.iterrows():
-            article_data = {
-                'title': row.get('title', 'Untitled'),
-                'url': row.get('url', ''),
-                'source': row.get('source', 'Unknown'),
-                'published_date': row.get('published_date', None)
-            }
-            
-            prediction_label = row.get('prediction_label', 'Not Relevant')
-            
-            if prediction_label == 'Directly Relevant':
-                directly_relevant_articles.append(article_data)
-            elif prediction_label == 'Indirectly Useful':
-                indirectly_useful_articles.append(article_data)
-            else:
-                not_relevant_articles.append(article_data)
-        
-        # ============================================
-        # Return Results with All Articles
-        # ============================================
-        # Convert all articles to list format
-        all_articles = []
-        for idx, row in df_classified.iterrows():
-            all_articles.append({
-                'title': row.get('title', 'Untitled'),
-                'content': row.get('content', ''),
-                'url': row.get('url', ''),
-                'source': row.get('source', 'Unknown'),
-                'published_date': row.get('published_date', None),
-                'classification': row.get('prediction_label', 'Not Relevant'),
-                'confidence_score': row.get('confidence_score', 0.0)
-            })
-        
-        results = {
-            'company_name': company_name,
-            'company_id': company_id,
-            'sme_id': sme_id,
-            'articles_scraped': len(df_classified),
-            'articles_classified': {
-                'directly_relevant': len(df_classified[df_classified['prediction_label'] == 'Directly Relevant']) if 'prediction_label' in df_classified.columns else 0,
-                'indirectly_useful': len(df_classified[df_classified['prediction_label'] == 'Indirectly Useful']) if 'prediction_label' in df_classified.columns else 0,
-                'not_relevant': len(df_classified[df_classified['prediction_label'] == 'Not Relevant']) if 'prediction_label' in df_classified.columns else 0
-            },
-            'articles_by_classification': {
-                'directly_relevant': directly_relevant_articles,
-                'indirectly_useful': indirectly_useful_articles,
-                'not_relevant': not_relevant_articles
-            },
-            'all_articles': all_articles,
-            'articles_stored': articles_stored,
-            'rag_analysis': {
-                '1_latest_updates': analysis_results.get('latest_updates', {}),
-                '2_challenges': analysis_results.get('challenges', {}),
-                '3_decision_makers': analysis_results.get('decision_makers', {}),
-                '4_market_position': analysis_results.get('market_position', {}),
-                '5_future_plans': analysis_results.get('future_plans', {}),
-                '6_action_plan': analysis_results.get('action_plan', {}),
-                '7_solution': analysis_results.get('solution', {}),
-                '8_company_info': analysis_results.get('company_info', {}),
-                '9_strengths': analysis_results.get('strengths', {}),
-                '10_opportunities': analysis_results.get('opportunities', {})
-            },
-            'classification_summary': classification_results.get('classification_summary', {}),
-            'rag_metadata': {
-                'total_items_extracted': rag_metadata['total_items_extracted'],
-                'average_confidence': rag_metadata['average_confidence'],
-                'duration_seconds': rag_metadata['duration_seconds'],
-                'articles_processed': rag_metadata['articles_processed'],
-                'chunks_created': rag_metadata['chunks_created'],
-                'vector_storage': rag_metadata['vector_storage'],
-                'hyperparameters': rag_metadata['hyperparameters']
-            },
-            'metadata': {
-                'sme_objective': sme_objective,
-                'scraping_method': 'Google/SerpAPI only (no LinkedIn)',
-                'classification_method': 'ML-based with SME objectives',
-                'analysis_method': 'RAG (Retrieval-Augmented Generation) with 10 categories',
-                'total_articles_analyzed': len(articles_for_analysis),
-                'llm_model': settings.ollama_model,
-                'embedding_model': 'all-MiniLM-L6-v2'
-            },
-            'job_id': job_identifier
-        }
-        
         logger.info("✅ Unified analysis with RAG completed successfully!")
         finalize_analysis_progress(
             job_identifier,
@@ -622,30 +493,127 @@ async def unified_company_analysis(
             f"Analysis completed for {company_name}.",
         )
         
-        return APIResponse(
-            success=True,
-            message=f"Successfully completed unified analysis with RAG for {company_name} - 10 categories extracted",
-            data=results
-        )
-        
-    except HTTPException as http_exc:
-        finalize_analysis_progress(
-            locals().get("job_identifier", job_id),
-            "failed",
-            str(http_exc.detail) if hasattr(http_exc, "detail") else "Analysis failed.",
-        )
-        raise
     except Exception as e:
         logger.error(f"Unified analysis failed: {e}")
         finalize_analysis_progress(
-            locals().get("job_identifier", job_id),
+            job_identifier,
             "failed",
             f"Unified analysis failed: {str(e)}",
         )
+
+@router.post(
+    "/unified-analysis",
+    summary="Unified Company Analysis (Scrape + Classify + RAG Analysis) - Background Execution",
+    description="""
+    **Complete one-endpoint solution for company analysis with RAG (Retrieval-Augmented Generation).**
+    
+    **IMPORTANT: This endpoint returns immediately and runs the analysis in the background.**
+    Use the `/unified-analysis/progress/{job_id}` endpoint to track progress.
+    
+    This endpoint orchestrates a complete analysis pipeline:
+    
+    **1. Google Scraping** (No LinkedIn)
+    - Scrapes company news and articles using SerpAPI/Google
+    - Retrieves up to 100 articles about the company
+    
+    **2. Article Classification Based on SME Objectives**
+    - Classifies articles into: Directly Relevant, Indirectly Useful, Not Relevant
+    - Uses your SME objectives to determine relevance
+    - Stores classified articles in the database
+    
+    **3. RAG Analysis (10 Categories)**
+    - Analyzes the company using RAG (Retrieval-Augmented Generation)
+    - Extracts 10 intelligence categories:
+      1. Latest Updates
+      2. Challenges
+      3. Decision Makers
+      4. Market Position
+      5. Future Plans
+      6. Action Plan (SME engagement steps)
+      7. Solution (SME offerings for their needs)
+      8. Company Info (5-sentence description)
+      9. Strengths (competitive advantages)
+      10. Opportunities (growth areas)
+    - Uses semantic retrieval + Llama 3.1 for extraction
+    - Stores results in the database
+    
+    **Step-by-step process:**
+    1. Scrape company data from Google (SerpAPI)
+    2. Classify articles based on your SME objectives
+    3. Store classified articles in the `article` table
+    4. Run RAG analysis (10 categories with vector retrieval)
+    5. Store analysis results in the `analysis` table
+    
+    **Important:**
+    - Only uses Google/SerpAPI (no LinkedIn scraping)
+    - Classification happens BEFORE analysis
+    - RAG provides actionable, SME-personalized insights
+    - Both articles and analysis are stored in database
+    - Uses `sme_id` to link everything to your SME
+    - Runs in background - poll `/unified-analysis/progress/{job_id}` for status
+    """,
+    response_description="Analysis started in background. Use job_id to track progress."
+)
+async def unified_company_analysis(
+    company_name: str = Form(..., description="Name of the company to analyze"),
+    company_location: str = Form(..., description="Location of the company"),
+    sme_id: int = Form(..., description="Your SME ID"),
+    sme_objective: str = Form(..., description="Your SME's objectives and capabilities"),
+    max_articles: int = Form(100, description="Maximum number of articles to scrape (default: 100)"),
+    company_id: Optional[int] = Form(None, description="Optional: Existing company ID to use (if not provided, will search by name)"),
+    job_id: Optional[str] = Form(None, description="Optional: Client-supplied job identifier for progress tracking"),
+):
+    """
+    Unified endpoint that starts analysis in the background and returns immediately.
+    The analysis runs asynchronously and progress can be tracked via the progress endpoint.
+    """
+    # Generate or use provided job identifier
+    job_identifier = job_id or f"{sme_id}-{company_name}-{uuid4().hex}"
+    
+    # Validate basic inputs
+    if not company_name or not company_location:
         raise HTTPException(
-            status_code=500,
-            detail=f"Unified analysis failed: {str(e)}"
+            status_code=400,
+            detail="company_name and company_location are required"
         )
+    
+    # Start the analysis as a background task
+    logger.info(f"🚀 Queuing unified analysis for: {company_name} (job_id: {job_identifier})")
+    
+    # Initialize progress
+    update_analysis_progress(
+        job_identifier,
+        5.0,
+        "Analysis queued. Starting background processing...",
+        extra={"stage": "queued"},
+    )
+    
+    # Start background task using asyncio.create_task
+    # This will run concurrently and not block the response
+    asyncio.create_task(
+        run_unified_analysis_background(
+            company_name=company_name,
+            company_location=company_location,
+            sme_id=sme_id,
+            sme_objective=sme_objective,
+            max_articles=max_articles,
+            company_id=company_id,
+            job_identifier=job_identifier,
+        )
+    )
+    
+    # Return immediately with job_id for tracking
+    return APIResponse(
+        success=True,
+        message=f"Unified analysis started in background for {company_name}. Use the job_id to track progress.",
+        data={
+            "job_id": job_identifier,
+            "company_name": company_name,
+            "status": "queued",
+            "progress_endpoint": f"/api/v1/unified/unified-analysis/progress/{job_identifier}",
+            "message": "Analysis is running in the background. Poll the progress endpoint to track status."
+        }
+    )
 
 
 @router.get(

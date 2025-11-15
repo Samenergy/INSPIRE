@@ -931,7 +931,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch companies from backend API filtered by sme_id
       const response = await fetch(
-        `https://api.inspire.software/api/inspire/companies?sme_id=${user.sme_id}`,
+        `http://0.0.0.0:8000/api/inspire/companies?sme_id=${user.sme_id}`,
         {
         headers: {
             "Content-Type": "application/json",
@@ -1067,7 +1067,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     const pollProgress = async () => {
       try {
         const progressResponse = await fetch(
-          `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${jobId}`,
+          `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${jobId}`,
           {
             headers: {
               ...(localStorage.getItem("auth_token")
@@ -1118,6 +1118,13 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           }));
 
           if (status === "completed" || boundedPercent >= 100) {
+            // Stop polling immediately to avoid any further blocking
+            if (analysisProgressIntervalRef.current !== null) {
+              window.clearInterval(analysisProgressIntervalRef.current);
+              analysisProgressIntervalRef.current = null;
+            }
+            
+            // Update progress state
             setAnalysisProgressTarget(100);
             setAnalysisStatusMessage(
               message || "Analysis completed successfully."
@@ -1130,8 +1137,52 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 message: message || "Analysis completed successfully.",
               },
             }));
+            
+            // Clear analysis state immediately (non-blocking)
             clearAnalysisProgress();
+            setAnalysisCompletionPending(true);
+            setAnalyzingCompany(false);
+            
+            // Show success notification (non-blocking)
+            setTimeout(() => {
+              setNotification({
+                open: true,
+                message: "Company analysis completed successfully",
+                severity: "success",
+                companyId: companyId,
+              });
+            }, 0);
+            
+            // Defer heavy operations to avoid blocking UI
+            // Use requestIdleCallback if available, otherwise setTimeout
+            const deferReload = (callback: () => void) => {
+              if ('requestIdleCallback' in window) {
+                (window as any).requestIdleCallback(callback, { timeout: 2000 });
+              } else {
+                setTimeout(callback, 100);
+              }
+            };
+            
+            // Reload company data from database asynchronously (non-blocking)
+            deferReload(() => {
+              loadCompanies().then((updatedCompanies) => {
+                setCompanies(updatedCompanies);
+                // Update selected company if it's the one that was analyzed
+                const updatedCompany = updatedCompanies.find(c => c.id === companyId);
+                if (updatedCompany && selectedCompany?.id === companyId) {
+                  setSelectedCompany(updatedCompany);
+                }
+              }).catch((err) => {
+                console.error("Error reloading companies after analysis:", err);
+              });
+            });
           } else if (status === "failed") {
+            // Stop polling immediately to avoid any further blocking
+            if (analysisProgressIntervalRef.current !== null) {
+              window.clearInterval(analysisProgressIntervalRef.current);
+              analysisProgressIntervalRef.current = null;
+            }
+            
             setAnalysisStatusMessage(message || "Analysis failed.");
             setAnalysisProgressByCompany((prev) => ({
               ...prev,
@@ -1145,6 +1196,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               },
             }));
             clearAnalysisProgress();
+            setAnalyzingCompany(false);
+            setAnalysisCompletionPending(false);
           }
         }
       } catch (error) {
@@ -1287,7 +1340,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       setLoading(true);
       
       const response = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${menuCompany.id}`,
+        `http://0.0.0.0:8000/api/inspire/companies/${menuCompany.id}`,
         {
           method: "PUT",
         headers: {
@@ -1401,7 +1454,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       }
 
       const response = await fetch(
-        "https://api.inspire.software/api/v1/unified/unified-analysis",
+        "http://0.0.0.0:8000/api/v1/unified/unified-analysis",
         {
           method: "POST",
         headers: {
@@ -1422,177 +1475,41 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       const result = await response.json();
 
-      // Store analysis results
-      if (result.data) {
-        const ragAnalysis = result.data.rag_analysis || {};
-
-        console.log("📰 Articles received:", result.data.all_articles);
-        console.log("🤖 RAG Analysis received:", ragAnalysis);
-
-        // Extract company_info, strengths, and opportunities from RAG analysis
-        const companyInfoData = ragAnalysis["8_company_info"]?.data || {};
-        const strengthsData = ragAnalysis["9_strengths"]?.data || {};
-        const opportunitiesData = ragAnalysis["10_opportunities"]?.data || {};
-
-        // Format company_info as a paragraph (5 sentences)
-        let companyInfoText = "";
-        if (companyInfoData.description) {
-          const sentences = [
-            companyInfoData.description.sentence1,
-            companyInfoData.description.sentence2,
-            companyInfoData.description.sentence3,
-            companyInfoData.description.sentence4,
-            companyInfoData.description.sentence5,
-          ]
-            .filter((s) => s && s.trim())
-            .join(" ");
-          companyInfoText = sentences;
+      // The endpoint now returns immediately with job_id
+      // Analysis runs in background, so we just handle the immediate response
+      if (result.success && result.data?.job_id) {
+        const returnedJobId = result.data.job_id;
+        
+        // Use the returned job_id (may be different from what we sent)
+        if (companyId) {
+          startAnalysisProgressPolling(returnedJobId, companyId);
         }
-
-        // Format strengths as array of strings
-        const strengthsArray: string[] = [];
-        if (strengthsData.strengths && Array.isArray(strengthsData.strengths)) {
-          strengthsArray.push(
-            ...strengthsData.strengths.map((s: any) => {
-              const strengthText = s.strength || "";
-              const evidenceText = s.evidence ? ` (${s.evidence})` : "";
-              return `${strengthText}${evidenceText}`;
-            })
-          );
-        }
-
-        // Format opportunities as array of strings
-        const opportunitiesArray: string[] = [];
-        if (
-          opportunitiesData.opportunities &&
-          Array.isArray(opportunitiesData.opportunities)
-        ) {
-          opportunitiesArray.push(
-            ...opportunitiesData.opportunities.map((o: any) => {
-              const oppText = o.opportunity || "";
-              const basisText = o.basis ? ` - ${o.basis}` : "";
-              return `${oppText}${basisText}`;
-            })
-          );
-        }
-
-        // Update AI description with RAG data
-        setAiDescription({
-          summary: companyInfoText || aiDescription.summary,
-          strengths:
-            strengthsArray.length > 0
-              ? strengthsArray
-              : aiDescription.strengths,
-          opportunities:
-            opportunitiesArray.length > 0
-              ? opportunitiesArray
-              : aiDescription.opportunities,
-          isLoading: false,
+        
+        setNotification({
+          open: true,
+          message: result.message || "Company analysis started in background",
+          severity: "info",
+          companyId: selectedCompany.id,
         });
         
-        // Store in selectedCompany for display
-        setSelectedCompany((prev) =>
-          prev
-            ? {
-                ...prev,
-          insights: [
-            {
-              question: "What are the latest company updates?",
-                    points:
-                      ragAnalysis["1_latest_updates"]?.data?.updates?.map(
-                        (u: any) => u.update || ""
-                      ) || [],
-            },
-            {
-              question: "What are the company's challenges?",
-                    points:
-                      ragAnalysis["2_challenges"]?.data?.challenges?.map(
-                        (c: any) =>
-                          `${c.challenge || ""}${
-                            c.impact ? ` (Impact: ${c.impact})` : ""
-                          }`
-                      ) || [],
-            },
-            {
-              question: "Who are the key decision-makers?",
-                    points:
-                      ragAnalysis["3_decision_makers"]?.data?.decision_makers?.map(
-                        (d: any) => `${d.name || ""} - ${d.role || ""}`
-                      ) || [],
-            },
-            {
-              question: "How does the company position itself?",
-                    points: [
-                      ragAnalysis["4_market_position"]?.data?.description || "",
-                    ].filter((p) => p),
-            },
-            {
-              question: "What are the company's future plans?",
-                    points:
-                      ragAnalysis["5_future_plans"]?.data?.plans?.map(
-                        (p: any) =>
-                          `${p.plan || ""}${
-                            p.timeline ? ` (Timeline: ${p.timeline})` : ""
-                          }`
-                      ) || [],
-                  },
-                ],
-                actionPlan: JSON.stringify(
-                  ragAnalysis["6_action_plan"]?.data || {}
-                ),
-                suggestedSolutions: JSON.stringify(
-                  ragAnalysis["7_solution"]?.data || {}
-                ),
-                articles:
-                  result.data.articles_by_classification ||
-                  result.data.all_articles ||
-                  {},
-                updates: "completed",
-              }
-            : prev
-        );
-
-        console.log(
-          "📰 Articles stored in selectedCompany:",
-          result.data.all_articles
-        );
-        console.log("✅ Company Info, Strengths, Opportunities updated");
+        // Don't set analyzingCompany to false yet - let polling handle completion
+        // The analysis is now running in the background, UI is free to use
+      } else {
+        throw new Error(result.message || "Failed to start analysis");
       }
-
-      setNotification({
-        open: true,
-        message: result.message || "Company analysis completed successfully",
-        severity: "success",
-        companyId: selectedCompany.id,
-      });
-
-      if (companyId) {
-        setAnalysisProgressTarget((prev) => Math.max(prev, 100));
-        setAnalysisStatusMessage("Analysis completed successfully.");
-        clearAnalysisProgress(
-          "completed",
-          companyId,
-          `Analysis completed for ${companyName}.`
-        );
-        analysisCompletedSuccessfully = true;
-        setAnalysisCompletionPending(true);
-      }
-
-      // Reload companies to show updated data
-      const updatedCompanies = await loadCompanies();
-      setCompanies(updatedCompanies);
     } catch (error: any) {
-      console.error("Error analyzing company:", error);
+      console.error("Error starting company analysis:", error);
       setAnalysisCompletionPending(false);
+      setAnalyzingCompany(false);
       setNotification({
         open: true,
-        message: error.message || "Failed to analyze company",
+        message: error.message || "Failed to start company analysis",
         severity: "error",
         companyId: null,
       });
 
       if (selectedCompany?.id) {
-        setAnalysisStatusMessage(error.message || "Analysis failed.");
+        setAnalysisStatusMessage(error.message || "Analysis failed to start.");
         setCompanies((prev) =>
           prev.map((company) =>
             company.id === selectedCompany.id
@@ -1606,27 +1523,25 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         clearAnalysisProgress(
           "failed",
           selectedCompany.id,
-          error.message || "Analysis failed."
+          error.message || "Analysis failed to start."
         );
       }
-    } finally {
+      
+      // Clean up polling if it was started
       if (analysisProgressIntervalRef.current !== null) {
         window.clearInterval(analysisProgressIntervalRef.current);
         analysisProgressIntervalRef.current = null;
       }
-
-      if (!analysisCompletedSuccessfully) {
-        if (analysisResetTimeoutRef.current !== null) {
-          window.clearTimeout(analysisResetTimeoutRef.current);
-          analysisResetTimeoutRef.current = null;
-        }
-        setAnalysisCompletionPending(false);
-        setAnalyzingCompany(false);
-        analysisJobMetaRef.current = null;
-        setAnalysisProgressTarget(0);
-        setAnalysisProgress(0);
-        setAnalysisStatusMessage("Starting analysis...");
+      
+      if (analysisResetTimeoutRef.current !== null) {
+        window.clearTimeout(analysisResetTimeoutRef.current);
+        analysisResetTimeoutRef.current = null;
       }
+      
+      analysisJobMetaRef.current = null;
+      setAnalysisProgressTarget(0);
+      setAnalysisProgress(0);
+      setAnalysisStatusMessage("Starting analysis...");
     }
   };
 
@@ -1653,7 +1568,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       formData.append("outreach_type", outreachType);
 
       const response = await fetch(
-        "https://api.inspire.software/api/outreach/generate",
+        "http://0.0.0.0:8000/api/outreach/generate",
         {
           method: "POST",
         headers: {
@@ -1713,7 +1628,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch company details (includes company_info, strengths, opportunities)
       const companyResponse = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}`,
         {
           headers: {
             ...(localStorage.getItem("auth_token")
@@ -1727,7 +1642,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       
       // Fetch latest analysis
       const analysisResponse = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}/analysis`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}/analysis`,
         {
         headers: {
             ...(localStorage.getItem("auth_token")
@@ -1741,7 +1656,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch articles grouped by classification
       const articlesResponse = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}/articles`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}/articles`,
         {
         headers: {
             ...(localStorage.getItem("auth_token")
@@ -1940,7 +1855,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   ) => {
     try {
       const response = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}`,
         {
           method: "PUT",
         headers: {
@@ -2032,7 +1947,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // 1. Create the company in the backend
       const response = await fetch(
-        "https://api.inspire.software/api/inspire/companies",
+        "http://0.0.0.0:8000/api/inspire/companies",
         {
           method: "POST",
         headers: {
@@ -2102,7 +2017,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           startAnalysisProgressPolling(backgroundJobId, newCompanyId);
 
           const analysisResponse = await fetch(
-            "https://api.inspire.software/api/v1/unified/unified-analysis",
+            "http://0.0.0.0:8000/api/v1/unified/unified-analysis",
             {
               method: "POST",
           headers: {
@@ -2536,7 +2451,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           // Delete each company via API
           for (const companyId of selectedCompanies) {
             const response = await fetch(
-              `https://api.inspire.software/api/inspire/companies/${companyId}`,
+              `http://0.0.0.0:8000/api/inspire/companies/${companyId}`,
               {
                 method: "DELETE",
               headers: {
@@ -2582,7 +2497,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       // Delete single company
       try {
         const response = await fetch(
-          `https://api.inspire.software/api/inspire/companies/${companyToDelete}`,
+          `http://0.0.0.0:8000/api/inspire/companies/${companyToDelete}`,
           {
             method: "DELETE",
           headers: {
