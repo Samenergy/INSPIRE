@@ -202,13 +202,12 @@ app = FastAPI(
 
 origins = [
     "https://inspire.software",
-    "https://inspire-eight-rho.vercel.app",
     "https://www.inspire.software",
+    "https://inspire-eight-rho.vercel.app",
     "http://localhost",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
     "http://localhost:3000",
-
 ]
 
 app.add_middleware(
