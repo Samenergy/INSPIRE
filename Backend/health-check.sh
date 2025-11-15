@@ -2,7 +2,7 @@
 # Health Check Script for INSPIRE Backend
 # Monitors the API health endpoint and alerts on failure
 
-API_URL="http://0.0.0.0:8000/health"
+API_URL="https://api.inspire.software/health"
 LOG_FILE="/var/log/inspire-health-check.log"
 
 # Check API health

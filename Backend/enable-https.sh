@@ -101,7 +101,7 @@ if [ $? -eq 0 ]; then
     echo "✅ Nginx configuration is valid"
     echo "🔄 Restarting nginx..."
     docker compose restart nginx
-    echo "✅ HTTPS enabled! Your API is now available at: http://0.0.0.0:8000"
+    echo "✅ HTTPS enabled! Your API is now available at: https://api.inspire.software"
 else
     echo "❌ Nginx configuration test failed!"
     echo "   Restoring backup..."
