@@ -887,6 +887,33 @@ class InspireDatabaseService:
             affected_rows = await self.db.execute_update(query, (status, campaign_id))
         return affected_rows > 0
     
+    async def update_campaign(self, campaign_id: int, title: Optional[str] = None, content: Optional[str] = None) -> bool:
+        """Update campaign title and/or content"""
+        try:
+            updates = []
+            params = []
+            
+            if title is not None:
+                updates.append("title = %s")
+                params.append(title)
+            
+            if content is not None:
+                updates.append("content = %s")
+                params.append(content)
+            
+            if not updates:
+                return False
+            
+            params.append(campaign_id)
+            
+            query = f"UPDATE campaign SET {', '.join(updates)} WHERE campaign_id = %s"
+            affected_rows = await self.db.execute_update(query, tuple(params))
+            return affected_rows > 0
+            
+        except Exception as e:
+            logger.error(f"Error updating campaign: {str(e)}")
+            raise
+    
     async def delete_campaign(self, campaign_id: int) -> bool:
         """Delete campaign by ID"""
         query = "DELETE FROM campaign WHERE campaign_id = %s"

@@ -126,6 +126,7 @@ const TypeBadge: React.FC<TypeBadgeProps> = ({ type, label, size = 'small', ...p
 // Define the Campaign interface to match backend response
 interface Campaign {
   campaign_id: number;
+  company_id: number;
   title: string;
   content: string;
   outreach_type: 'email' | 'call' | 'meeting';
@@ -152,6 +153,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState<boolean>(false);
 
   const isGenericTitle = (title?: string | null) => {
     if (!title) return true;
@@ -331,6 +333,144 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
 
   const handleCloseCreateDialog = () => {
     setOpenCreateDialog(false);
+  };
+
+  const handleRegenerate = async () => {
+    if (!selectedCampaign || !user?.sme_id) {
+      setError('Please select a campaign and ensure you are logged in');
+      return;
+    }
+
+    try {
+      setRegenerating(true);
+      setError(null);
+
+      // Step 1: Generate new outreach content
+      const formData = new FormData();
+      formData.append('company_id', selectedCampaign.company_id.toString());
+      formData.append('outreach_type', selectedCampaign.outreach_type);
+
+      const generateResponse = await fetch('https://api.inspire.software/api/outreach/generate', {
+        method: 'POST',
+        headers: {
+          ...(localStorage.getItem('auth_token')
+            ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
+            : {}),
+        },
+        body: formData,
+      });
+
+      if (!generateResponse.ok) {
+        const errorData = await generateResponse.json();
+        throw new Error(errorData.detail || 'Failed to regenerate outreach');
+      }
+
+      const generateResult = await generateResponse.json();
+      const newContent = generateResult.data;
+
+      // Step 2: Update the existing campaign with new content (overwrite)
+      const updateFormData = new FormData();
+      updateFormData.append('title', newContent.title);
+      updateFormData.append('content', newContent.content);
+
+      const updateResponse = await fetch(`https://api.inspire.software/api/outreach/campaigns/${selectedCampaign.campaign_id}`, {
+        method: 'PUT',
+        headers: {
+          ...(localStorage.getItem('auth_token')
+            ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
+            : {}),
+        },
+        body: updateFormData,
+      });
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.detail || 'Failed to update campaign');
+      }
+
+      const updateResult = await updateResponse.json();
+      const updatedCampaign = updateResult.data;
+
+      // Step 3: Delete the newly created campaign (since we updated the existing one)
+      if (newContent.campaign_id && newContent.campaign_id !== selectedCampaign.campaign_id) {
+        try {
+          await fetch(`https://api.inspire.software/api/outreach/campaigns/${newContent.campaign_id}`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(localStorage.getItem('auth_token')
+                ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
+                : {}),
+            },
+          });
+        } catch (deleteError) {
+          // Log but don't fail the whole operation if delete fails
+          console.warn('Failed to delete temporary campaign:', deleteError);
+        }
+      }
+
+      // Update the campaign in the list
+      setCampaigns((prevCampaigns) =>
+        prevCampaigns.map((campaign) =>
+          campaign.campaign_id === selectedCampaign.campaign_id
+            ? { ...updatedCampaign, company_id: selectedCampaign.company_id }
+            : campaign
+        ).filter((campaign) => campaign.campaign_id !== newContent.campaign_id || campaign.campaign_id === selectedCampaign.campaign_id)
+      );
+
+      // Update selected campaign
+      setSelectedCampaignId(updatedCampaign.campaign_id);
+      setEditedContent(updatedCampaign.content);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error regenerating outreach:', error);
+      setError(error instanceof Error ? error.message : 'Failed to regenerate outreach');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedCampaign || !user?.sme_id) {
+      setError('Please select a campaign and ensure you are logged in');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete this campaign? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setError(null);
+
+      const response = await fetch(`https://api.inspire.software/api/outreach/campaigns/${selectedCampaign.campaign_id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('auth_token')
+            ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
+            : {}),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete campaign');
+      }
+
+      // Remove campaign from list
+      setCampaigns((prevCampaigns) =>
+        prevCampaigns.filter((campaign) => campaign.campaign_id !== selectedCampaign.campaign_id)
+      );
+
+      // Clear selection
+      setSelectedCampaignId(null);
+      setEditedContent('');
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete campaign');
+    }
   };
 
   // Filter campaigns based on search query and selected tab
@@ -721,21 +861,42 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                       Generated on {new Date(selectedCampaign.generated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                     </Typography>
                   </Box>
-                  <Button
-                    variant="outlined"
-                    startIcon={isEditing ? <CheckCircleIcon /> : <EditIcon size={18} />}
-                    onClick={handleEditToggle}
-                    sx={{
-                      borderRadius: BORDER_RADIUS.md,
-                      textTransform: 'none',
-                      borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
-                      '&:hover': {
-                        borderColor: mode === 'dark' ? 'white' : 'black',
-                      }
-                    }}
-                  >
-                    {isEditing ? 'Save Changes' : 'Edit Campaign'}
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      variant="outlined"
+                      startIcon={regenerating ? <CircularProgress size={16} /> : <AutoAwesomeIcon size={18} />}
+                      onClick={handleRegenerate}
+                      disabled={regenerating}
+                      sx={{
+                        borderRadius: BORDER_RADIUS.md,
+                        textTransform: 'none',
+                        borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
+                        '&:hover': {
+                          borderColor: mode === 'dark' ? 'white' : 'black',
+                        },
+                        '&:disabled': {
+                          opacity: 0.6
+                        }
+                      }}
+                    >
+                      {regenerating ? 'Regenerating...' : 'Regenerate'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={isEditing ? <CheckCircleIcon /> : <EditIcon size={18} />}
+                      onClick={handleEditToggle}
+                      sx={{
+                        borderRadius: BORDER_RADIUS.md,
+                        textTransform: 'none',
+                        borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
+                        '&:hover': {
+                          borderColor: mode === 'dark' ? 'white' : 'black',
+                        }
+                      }}
+                    >
+                      {isEditing ? 'Save Changes' : 'Edit Campaign'}
+                    </Button>
+                  </Box>
                 </Box>
               </Box>
 
@@ -1046,22 +1207,23 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
                     Improve with AI
                   </Button>
                 </Box>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<DeleteIcon size={18} />}
-                  sx={{
-                    borderRadius: BORDER_RADIUS.md,
-                    textTransform: 'none',
-                    '&:hover': {
-                      backgroundColor: 'error.main',
-                      color: 'white',
-                      borderColor: 'error.main',
-                    }
-                  }}
-                >
-                  Delete
-                </Button>
+                 <Button
+                   variant="outlined"
+                   color="error"
+                   startIcon={<DeleteIcon size={18} />}
+                   onClick={handleDelete}
+                   sx={{
+                     borderRadius: BORDER_RADIUS.md,
+                     textTransform: 'none',
+                     '&:hover': {
+                       backgroundColor: 'error.main',
+                       color: 'white',
+                       borderColor: 'error.main',
+                     }
+                   }}
+                 >
+                   Delete
+                 </Button>
               </Box>
             </>
           ) : (

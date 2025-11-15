@@ -4,7 +4,7 @@ tailored to SME objectives and company articles.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Form, HTTPException, Depends
 from datetime import datetime
 
@@ -330,6 +330,69 @@ async def get_campaign(
     except Exception as e:
         logger.error(f"Error getting campaign {campaign_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get campaign: {str(e)}")
+
+@router.put(
+    "/campaigns/{campaign_id}",
+    response_model=INSPIREResponse[Campaign],
+    summary="Update Campaign",
+    description="Update campaign title and/or content"
+)
+async def update_campaign(
+    campaign_id: int,
+    title: Optional[str] = Form(None, description="New campaign title"),
+    content: Optional[str] = Form(None, description="New campaign content"),
+    current_sme: Dict[str, Any] = Depends(get_current_sme)
+):
+    """Update campaign title and/or content."""
+    try:
+        sme_id = current_sme["sme_id"]
+        
+        # Verify campaign exists and belongs to SME
+        campaign_data = await inspire_db.get_campaign_by_id(campaign_id)
+        if not campaign_data:
+            raise HTTPException(status_code=404, detail="Campaign not found")
+        
+        if campaign_data.get('sme_id') != sme_id:
+            raise HTTPException(status_code=403, detail="Access denied: Campaign does not belong to your SME")
+        
+        # Update campaign
+        success = await inspire_db.update_campaign(campaign_id, title, content)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update campaign")
+        
+        # Get updated campaign
+        updated_campaign_data = await inspire_db.get_campaign_by_id(campaign_id)
+        if not updated_campaign_data:
+            raise HTTPException(status_code=404, detail="Campaign not found after update")
+        
+        campaign = Campaign(
+            campaign_id=updated_campaign_data['campaign_id'],
+            sme_id=updated_campaign_data['sme_id'],
+            company_id=updated_campaign_data['company_id'],
+            outreach_type=OutreachType(updated_campaign_data['outreach_type']),
+            title=updated_campaign_data['title'],
+            content=updated_campaign_data['content'],
+            status=updated_campaign_data['status'],
+            generated_at=updated_campaign_data['generated_at'],
+            scheduled_at=updated_campaign_data.get('scheduled_at'),
+            sent_at=updated_campaign_data.get('sent_at'),
+            created_at=updated_campaign_data['created_at'],
+            updated_at=updated_campaign_data['updated_at'],
+            company_name=updated_campaign_data.get('company_name')
+        )
+        
+        return INSPIREResponse(
+            success=True,
+            message="Campaign updated successfully",
+            data=campaign
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating campaign {campaign_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update campaign: {str(e)}")
 
 @router.put(
     "/campaigns/{campaign_id}/status",

@@ -9,14 +9,21 @@ from datetime import datetime
 import json
 import os
 import re
-import aiohttp
+import asyncio
+import requests
 from ..models import OutreachType
 
 logger = logging.getLogger(__name__)
 
 class OutreachService:
     def __init__(self):
-        self.ollama_url = os.getenv('OLLAMA_BASE_URL') or os.getenv('OLLAMA_URL', 'http://localhost:11434')
+        ollama_url = os.getenv('OLLAMA_BASE_URL') or os.getenv('OLLAMA_URL', 'http://localhost:11434')
+        # Ensure URL doesn't have trailing slash and is properly formatted
+        self.ollama_url = ollama_url.rstrip('/')
+        if not self.ollama_url.startswith(('http://', 'https://')):
+            self.ollama_url = f'http://{self.ollama_url}'
+        
+        logger.info(f"OutreachService initialized with Ollama URL: {self.ollama_url}")
         
     async def generate_outreach_content(
         self,
@@ -318,89 +325,131 @@ Format your response as JSON:
                 }
             }
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.ollama_url}/api/generate",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=60)
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        generated_text = result.get('response', '')
-                        
-                        # Try to parse JSON response
-                        try:
-                            # Look for JSON in the response
-                            start_idx = generated_text.find('{')
-                            end_idx = generated_text.rfind('}') + 1
-                            if start_idx != -1 and end_idx != -1:
-                                json_str = generated_text[start_idx:end_idx]
-                                parsed_content = json.loads(json_str)
-                                
-                                # Extract title and content
-                                title = parsed_content.get("title", "")
-                                content = parsed_content.get("content", generated_text)
-                                
-                                # Always extract title from content for emails
-                                if outreach_type == "email":
-                                    # Title from LLM response should be the email subject
-                                    # If it's generic, try to extract from content
-                                    title_lower = title.lower() if title else ""
-                                    is_generic = (
-                                        not title or 
-                                        'email outreach' in title_lower or 
-                                        'generated email outreach' in title_lower or 
-                                        'generated outreach' in title_lower or
-                                        title_lower == 'email outreach' or
-                                        title_lower == 'outreach'
-                                    )
-                                    
-                                    if is_generic and '"title"' in str(content):
-                                        # Try to extract subject from content JSON
-                                        match = re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"', str(content))
-                                        if match:
-                                            extracted_title = match.group(1)
-                                            # Unescape JSON string
-                                            extracted_title = extracted_title.replace('\\"', '"').replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '\r').replace('\\\\', '\\')
-                                            if extracted_title.strip() and 'email outreach' not in extracted_title.lower():
-                                                title = extracted_title.strip()
-                                        
-                                        # If still generic, try simpler regex
-                                        if not title or 'email outreach' in title.lower():
-                                            match = re.search(r'"title"\s*:\s*"([^"]+)"', str(content))
-                                            if match:
-                                                extracted_title = match.group(1).strip()
-                                                if extracted_title and 'email outreach' not in extracted_title.lower():
-                                                    title = extracted_title
-                                elif not title or (title.lower().startswith('generated') and 'outreach' in title.lower()):
-                                    title = f"{outreach_type.title()} Outreach"
-                                
-                                return {
-                                    "title": title,
-                                    "content": content
-                                }
-                        except json.JSONDecodeError:
-                            logger.warning(f"Could not parse JSON from LLM response for {outreach_type}")
-                        
-                        # Fallback: use the entire response as content
-                        # Try to extract subject from the text
-                        fallback_title = f"{outreach_type.title()} Outreach"
-                        if outreach_type == "email":
-                            # Try to find subject line in the text
-                            subject_match = re.search(r'(?:subject|title)[\s:]+["\']?([^"\'\n]+)["\']?', generated_text, re.IGNORECASE)
-                            if subject_match:
-                                fallback_title = subject_match.group(1).strip()
-                        
-                        return {
-                            "title": fallback_title,
-                            "content": generated_text
-                        }
+            # Try multiple URLs in case of DNS issues
+            # First try the configured URL, then fallback to localhost
+            urls_to_try = [self.ollama_url]
+            
+            # If configured URL uses 'ollama' hostname, also try 'localhost'
+            if 'ollama' in self.ollama_url and 'localhost' not in self.ollama_url:
+                localhost_url = self.ollama_url.replace('ollama', 'localhost')
+                urls_to_try.append(localhost_url)
+            
+            # Use requests (synchronous) in a thread pool to avoid blocking
+            # This matches how RAG service connects to Ollama successfully
+            def _make_request(url):
+                with requests.Session() as session:
+                    response = session.post(
+                        f"{url}/api/generate",
+                        json=payload,
+                        timeout=60
+                    )
+                    if response.status_code == 200:
+                        return response.json()
                     else:
-                        logger.error(f"LLM API error: {response.status}")
-                        raise Exception(f"LLM API returned status {response.status}")
+                        raise Exception(f"LLM API returned status {response.status_code}")
+            
+            # Try each URL until one works
+            last_error = None
+            for url in urls_to_try:
+                try:
+                    api_url = f"{url}/api/generate"
+                    logger.info(f"Calling Ollama at: {api_url}")
+                    
+                    # Run the synchronous request in a thread pool
+                    result = await asyncio.to_thread(_make_request, url)
+                    generated_text = result.get('response', '')
+                    break  # Success, exit the loop
+                except requests.exceptions.ConnectionError as e:
+                    last_error = e
+                    logger.warning(f"Failed to connect to {url}, trying next URL...")
+                    continue
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Error connecting to {url}: {e}, trying next URL...")
+                    continue
+            else:
+                # All URLs failed
+                raise last_error or Exception("All Ollama connection attempts failed")
+            
+            # Try to parse JSON response
+            try:
+                # Look for JSON in the response
+                start_idx = generated_text.find('{')
+                end_idx = generated_text.rfind('}') + 1
+                if start_idx != -1 and end_idx != -1:
+                    json_str = generated_text[start_idx:end_idx]
+                    parsed_content = json.loads(json_str)
+                    
+                    # Extract title and content
+                    title = parsed_content.get("title", "")
+                    content = parsed_content.get("content", generated_text)
+                    
+                    # Always extract title from content for emails
+                    if outreach_type == "email":
+                        # Title from LLM response should be the email subject
+                        # If it's generic, try to extract from content
+                        title_lower = title.lower() if title else ""
+                        is_generic = (
+                            not title or 
+                            'email outreach' in title_lower or 
+                            'generated email outreach' in title_lower or 
+                            'generated outreach' in title_lower or
+                            title_lower == 'email outreach' or
+                            title_lower == 'outreach'
+                        )
                         
+                        if is_generic and '"title"' in str(content):
+                            # Try to extract subject from content JSON
+                            match = re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"', str(content))
+                            if match:
+                                extracted_title = match.group(1)
+                                # Unescape JSON string
+                                extracted_title = extracted_title.replace('\\"', '"').replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '\r').replace('\\\\', '\\')
+                                if extracted_title.strip() and 'email outreach' not in extracted_title.lower():
+                                    title = extracted_title.strip()
+                            
+                            # If still generic, try simpler regex
+                            if not title or 'email outreach' in title.lower():
+                                match = re.search(r'"title"\s*:\s*"([^"]+)"', str(content))
+                                if match:
+                                    extracted_title = match.group(1).strip()
+                                    if extracted_title and 'email outreach' not in extracted_title.lower():
+                                        title = extracted_title
+                    elif not title or (title.lower().startswith('generated') and 'outreach' in title.lower()):
+                        title = f"{outreach_type.title()} Outreach"
+                    
+                    return {
+                        "title": title,
+                        "content": content
+                    }
+            except json.JSONDecodeError:
+                logger.warning(f"Could not parse JSON from LLM response for {outreach_type}")
+            
+            # Fallback: use the entire response as content
+            # Try to extract subject from the text
+            fallback_title = f"{outreach_type.title()} Outreach"
+            if outreach_type == "email":
+                # Try to find subject line in the text
+                subject_match = re.search(r'(?:subject|title)[\s:]+["\']?([^"\'\n]+)["\']?', generated_text, re.IGNORECASE)
+                if subject_match:
+                    fallback_title = subject_match.group(1).strip()
+            
+            return {
+                "title": fallback_title,
+                "content": generated_text
+            }
+                        
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Connection error calling LLM for {outreach_type}: {str(e)}")
+            logger.error(f"Ollama URL was: {self.ollama_url}")
+            raise Exception(f"Failed to connect to Ollama service at {self.ollama_url}. Please ensure Ollama is running and accessible.")
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Timeout calling LLM for {outreach_type}: {str(e)}")
+            logger.error(f"Ollama URL was: {self.ollama_url}")
+            raise Exception(f"Timeout connecting to Ollama service at {self.ollama_url}.")
         except Exception as e:
             logger.error(f"Error calling LLM for {outreach_type}: {str(e)}")
+            logger.error(f"Ollama URL was: {self.ollama_url}")
             raise
     
     def _get_fallback_content(self, outreach_type: OutreachType, company_name: str) -> Dict[str, str]:
