@@ -14,6 +14,31 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=llama3.1:latest
       - DEBUG=False
+      - TORCH_DEVICE=cpu
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
+    depends_on:
+      - mysql
+      - redis
+      - milvus
+      - ollama
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  # Celery Worker for Background Tasks
+  celery_worker:
+    build: .
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=5
+    environment:
+      - MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/inspire
+      - REDIS_URL=redis://redis:6379/0
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.1:latest
+      - DEBUG=False
+      - TORCH_DEVICE=cpu
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
     depends_on:
       - mysql
       - redis

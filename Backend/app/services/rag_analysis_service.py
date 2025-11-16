@@ -21,7 +21,7 @@ import copy
 import hashlib
 import numpy as np
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from collections import OrderedDict
 from loguru import logger
@@ -123,11 +123,13 @@ class RAGAnalysisService:
             'similarity_threshold': 0.1  # Lowered from 0.2 to allow more chunks through
         }
         
-        # Initialize embedding model
-        logger.info("📦 Loading SentenceTransformer model...")
-        self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        # Initialize embedding model - FORCE CPU to prevent MPS/SIGSEGV crashes
+        logger.info("📦 Loading SentenceTransformer model (CPU-only)...")
+        import torch
+        device = 'cpu'  # Always use CPU to prevent SIGSEGV crashes
+        self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device=device)
         self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
-        logger.info(f"✅ Embedding model loaded (dim={self.embedding_dim})")
+        logger.info(f"✅ Embedding model loaded (dim={self.embedding_dim}, device={device})")
         
         # Initialize Milvus or in-memory storage
         self.milvus_available = False
@@ -688,7 +690,8 @@ class RAGAnalysisService:
         self,
         articles: List[Dict[str, str]],
         company_name: str,
-        sme_objective: str = ""
+        sme_objective: str = "",
+        progress_callback: Optional[Callable[[str, int, int], None]] = None
     ) -> Dict[str, Any]:
         """
         Perform comprehensive RAG analysis on company articles
@@ -704,6 +707,12 @@ class RAGAnalysisService:
         8. Company Info
         9. Strengths
         10. Opportunities
+        
+        Args:
+            articles: List of article dictionaries with 'title' and 'content'
+            company_name: Name of the company being analyzed
+            sme_objective: SME's objectives and capabilities
+            progress_callback: Optional callback function(category_name, category_num, total_categories) for progress updates
         """
         start_time = datetime.now()
         logger.info(f"🎯 Starting comprehensive RAG analysis for: {company_name}")
@@ -811,9 +820,22 @@ class RAGAnalysisService:
         categories = self._get_category_configs(company_name, sme_objective)
         
         results = {}
+        total_categories = len(categories)
+        category_num = 0
+        
         for cat_key, cat_config in categories.items():
+            category_num += 1
+            category_name = cat_config['name']
+            
+            # Call progress callback if provided
+            if progress_callback:
+                try:
+                    progress_callback(category_name, category_num, total_categories)
+                except Exception as e:
+                    logger.warning(f"Progress callback failed: {e}")
+            
             result = self.extract_category(
-                category_name=cat_config['name'],
+                category_name=category_name,
                 query=cat_config['query'],
                 prompt_template=cat_config['prompt'],
                 company_name=company_name,

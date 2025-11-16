@@ -952,20 +952,145 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       const companies = apiResponse.data || [];
 
       // Transform backend data to frontend Company format
-      const transformedCompanies: Company[] = companies.map((company: any) => ({
-        id: company.company_id,
-        companyName: company.name,
-        location: company.location || "Unknown",
-        industry: company.industry || "General",
-        activeAssets: "0", // Not available from backend
-        assets: [],
-        productFamily: "General", // Not available from backend
-        exitRate: "0.00", // Not available from backend
-        updates: "completed" as "completed",
-        logoSrc: "/images/avatar.png",
-        color: stringToColor(company.name),
-        website: company.website,
-      }));
+      // Check for active analyses and resume polling if needed
+      const transformedCompanies: Company[] = await Promise.all(
+        companies.map(async (company: any) => {
+          // Check if this company is currently being analyzed (has progress tracking in state)
+          const isCurrentlyAnalyzing = analysisProgressByCompany[company.company_id] !== undefined;
+          
+          // If not in state, check if there's an active analysis in Redis by trying recent job_ids
+          // We'll construct a likely job_id pattern and check the backend
+          let hasActiveAnalysis = isCurrentlyAnalyzing;
+          let activeJobId: string | null = null;
+          
+          if (!isCurrentlyAnalyzing) {
+            // Try to find active analysis by checking recent job_id patterns
+            // Format: analysis-{company_id}-{timestamp}
+            // We'll check a few recent timestamps (last 2 hours)
+            const now = Date.now();
+            const twoHoursAgo = now - 2 * 60 * 60 * 1000;
+            
+            // Check a few potential job_ids (recent timestamps)
+            const potentialJobIds = [
+              `analysis-${company.company_id}-${now}`,
+              `analysis-${company.company_id}-${now - 60000}`, // 1 min ago
+              `analysis-${company.company_id}-${now - 300000}`, // 5 min ago
+            ];
+            
+            // Try to find an active analysis
+            for (const jobId of potentialJobIds) {
+              try {
+                const progressResponse = await fetch(
+                  `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${jobId}`,
+                  {
+                    headers: {
+                      ...(localStorage.getItem("auth_token")
+                        ? {
+                            Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                          }
+                        : {}),
+                    },
+                  }
+                );
+                
+                if (progressResponse.ok) {
+                  const progressData = await progressResponse.json();
+                  if (progressData.success && progressData.data) {
+                    const status = progressData.data.status;
+                    if (status === "running" || status === "pending") {
+                      hasActiveAnalysis = true;
+                      activeJobId = jobId;
+                      console.log(`[loadCompanies] Found active analysis for company ${company.company_id}: ${jobId} (status: ${status})`);
+                      break;
+                    }
+                  }
+                }
+              } catch (error) {
+                // Silently continue checking other job_ids
+              }
+            }
+          } else {
+            // If already in state, get the job_id from analysisJobMetaRef
+            if (analysisJobMetaRef.current?.companyId === company.company_id) {
+              activeJobId = analysisJobMetaRef.current.jobId;
+            }
+          }
+          
+          // If we found an active analysis but polling isn't running, restart it
+          if (hasActiveAnalysis && activeJobId && !isCurrentlyAnalyzing) {
+            console.log(`[loadCompanies] Resuming polling for company ${company.company_id}, job ${activeJobId}`);
+            setTimeout(() => {
+              startAnalysisProgressPolling(activeJobId!, company.company_id);
+            }, 500);
+          } else if (!hasActiveAnalysis && !isCurrentlyAnalyzing) {
+            // Check localStorage for stored job_id
+            try {
+              const activeAnalyses = JSON.parse(localStorage.getItem('active_analyses') || '{}');
+              const storedJobId = activeAnalyses[company.company_id];
+              
+              if (storedJobId) {
+                // Verify the job is still active
+                try {
+                  const progressResponse = await fetch(
+                    `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${storedJobId}`,
+                    {
+                      headers: {
+                        ...(localStorage.getItem("auth_token")
+                          ? {
+                              Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                            }
+                          : {}),
+                      },
+                    }
+                  );
+                  
+                  if (progressResponse.ok) {
+                    const progressData = await progressResponse.json();
+                    if (progressData.success && progressData.data) {
+                      const status = progressData.data.status;
+                      if (status === "running" || status === "pending") {
+                        hasActiveAnalysis = true;
+                        activeJobId = storedJobId;
+                        console.log(`[loadCompanies] Found active analysis in localStorage for company ${company.company_id}: ${storedJobId} (status: ${status})`);
+                        // Restart polling
+                        setTimeout(() => {
+                          startAnalysisProgressPolling(storedJobId, company.company_id);
+                        }, 500);
+                      } else if (status === "completed" || status === "failed") {
+                        // Analysis is done, remove from localStorage
+                        delete activeAnalyses[company.company_id];
+                        localStorage.setItem('active_analyses', JSON.stringify(activeAnalyses));
+                      }
+                    }
+                  }
+                } catch (error) {
+                  // If we can't verify, assume it's done and remove from localStorage
+                  delete activeAnalyses[company.company_id];
+                  localStorage.setItem('active_analyses', JSON.stringify(activeAnalyses));
+                }
+              }
+            } catch (error) {
+              // Ignore localStorage errors
+            }
+          }
+          
+          return {
+            id: company.company_id,
+            companyName: company.name,
+            location: company.location || "Unknown",
+            industry: company.industry || "General",
+            activeAssets: "0", // Not available from backend
+            assets: [],
+            productFamily: "General", // Not available from backend
+            exitRate: "0.00", // Not available from backend
+            // Set to "loading" if analysis is active, otherwise default to "completed"
+            updates: hasActiveAnalysis ? ("loading" as "loading") : ("completed" as "completed"),
+            logoSrc: "/images/avatar.png",
+            color: stringToColor(company.name),
+            website: company.website,
+          };
+        })
+      );
 
       return transformedCompanies;
     } catch (error) {
@@ -997,6 +1122,8 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     message?: string
   ) => {
     if (analysisProgressIntervalRef.current !== null) {
+      console.log(`[clearAnalysisProgress] Clearing interval ${analysisProgressIntervalRef.current} (status: ${status}, companyId: ${companyId})`);
+      console.trace(`[clearAnalysisProgress] Call stack:`); // This will show what called this function
       window.clearInterval(analysisProgressIntervalRef.current);
       analysisProgressIntervalRef.current = null;
     }
@@ -1038,10 +1165,28 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   };
 
   const startAnalysisProgressPolling = (jobId: string, companyId: number) => {
-    if (!jobId || !companyId) return;
+    if (!jobId || !companyId) {
+      console.error(`[Progress Poll] Cannot start polling: jobId=${jobId}, companyId=${companyId}`);
+      return;
+    }
 
+    // Store job_id in localStorage so we can resume polling if user navigates away
+    try {
+      const activeAnalyses = JSON.parse(localStorage.getItem('active_analyses') || '{}');
+      activeAnalyses[companyId] = jobId;
+      localStorage.setItem('active_analyses', JSON.stringify(activeAnalyses));
+      console.log(`[Progress Poll] Stored job_id ${jobId} for company ${companyId} in localStorage`);
+    } catch (error) {
+      console.warn(`[Progress Poll] Failed to store job_id in localStorage:`, error);
+    }
+
+    console.log(`[Progress Poll] Starting polling for job ${jobId}, company ${companyId}`);
+
+    // Clear any existing polling
     if (analysisProgressIntervalRef.current !== null) {
+      console.log(`[Progress Poll] Clearing existing interval: ${analysisProgressIntervalRef.current}`);
       window.clearInterval(analysisProgressIntervalRef.current);
+      analysisProgressIntervalRef.current = null;
     }
     if (analysisResetTimeoutRef.current !== null) {
       window.clearTimeout(analysisResetTimeoutRef.current);
@@ -1064,7 +1209,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       },
     }));
 
+    // Track poll count for logging (scoped to this polling session)
+    let pollCount = 0;
     const pollProgress = async () => {
+      pollCount++;
+      console.log(`[Progress Poll #${pollCount}] Starting poll for job ${jobId}, company ${companyId}`);
+      
       try {
         const progressResponse = await fetch(
           `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${jobId}`,
@@ -1082,13 +1232,18 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         );
 
         if (!progressResponse.ok) {
-          throw new Error("Failed to fetch analysis progress");
+          console.warn(`[Progress Poll] Failed to fetch progress for job ${jobId}:`, progressResponse.status, progressResponse.statusText);
+          // Don't throw - continue polling in case it's a temporary issue
+          return;
         }
 
         const progressData = await progressResponse.json();
 
+        // Debug logging
+        console.log(`[Progress Poll] Job ${jobId}, Company ${companyId}:`, progressData);
+
         if (progressData.success && progressData.data) {
-          const rawPercent = progressData.data.percent;
+          const rawPercent = progressData.data.percent_complete || progressData.data.percent;
           const percent =
             typeof rawPercent === "number"
               ? rawPercent
@@ -1097,27 +1252,58 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           const message =
             progressData.data.message || "Processing company analysis...";
           const status = progressData.data.status || "running";
+          const stepName = progressData.data.step_name || progressData.data.stage || "processing";
 
-          setAnalysisProgressTarget((prevTarget) =>
-            boundedPercent > prevTarget ? boundedPercent : prevTarget
-          );
+          console.log(`[Progress Update] Company ${companyId}: ${boundedPercent}% - ${message} (${status})`);
+          console.log(`[Progress Update] Raw percent: ${rawPercent}, bounded: ${boundedPercent}, status: ${status}`);
+
+          setAnalysisProgressTarget((prevTarget) => {
+            const newTarget = boundedPercent > prevTarget ? boundedPercent : prevTarget;
+            console.log(`[Progress Update] Target updated: ${prevTarget} -> ${newTarget}`);
+            return newTarget;
+          });
           setAnalysisStatusMessage(message);
-          setAnalysisProgressByCompany((prev) => ({
-            ...prev,
-            [companyId]: {
-              target: Math.max(
-                prev[companyId]?.target ?? 0,
-                boundedPercent
-              ),
-              display: Math.max(
-                prev[companyId]?.display ?? 0,
-                boundedPercent
-              ),
-              message,
-            },
-          }));
+          
+          // Update per-company progress to the latest boundedPercent
+          // IMPORTANT: do NOT use Math.max here, otherwise a previous 100% run
+          // will keep the progress at 100% when a new analysis starts at 0%.
+          setAnalysisProgressByCompany((prev) => {
+            const newProgress = {
+              ...prev,
+              [companyId]: {
+                target: boundedPercent,
+                display: boundedPercent,
+                message,
+              },
+            };
+            console.log(`[Progress Update] analysisProgressByCompany updated for company ${companyId}:`, newProgress[companyId]);
+            return newProgress;
+          });
+          
+          // Ensure company status is "loading" during analysis
+          setCompanies((prev) =>
+            prev.map((company) =>
+              company.id === companyId && company.updates !== "loading"
+                ? { ...company, updates: "loading" as "loading" }
+                : company
+            )
+          );
+          setSelectedCompany((prev) =>
+            prev && prev.id === companyId && prev.updates !== "loading"
+              ? { ...prev, updates: "loading" as "loading" }
+              : prev
+          );
 
           if (status === "completed" || boundedPercent >= 100) {
+            console.log(`[Progress Poll] Analysis completed! Stopping polling for job ${jobId}, company ${companyId}`);
+            
+            // Clear the polling interval FIRST before doing anything else
+            if (analysisProgressIntervalRef.current !== null) {
+              console.log(`[Progress Poll] Clearing interval ${analysisProgressIntervalRef.current} because analysis completed`);
+              window.clearInterval(analysisProgressIntervalRef.current);
+              analysisProgressIntervalRef.current = null;
+            }
+            
             setAnalysisProgressTarget(100);
             setAnalysisStatusMessage(
               message || "Analysis completed successfully."
@@ -1130,7 +1316,41 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 message: message || "Analysis completed successfully.",
               },
             }));
+            
+            // Analysis completed - refresh company data to show new analysis
+            try {
+              await loadCompanyData(companyId);
+            } catch (error) {
+              console.error("Error refreshing company data after analysis:", error);
+            }
+            
+            // Update company status to "completed" in the state
+            setCompanies((prev) =>
+              prev.map((company) =>
+                company.id === companyId
+                  ? { ...company, updates: "completed" as "completed" }
+                  : company
+              )
+            );
+            setSelectedCompany((prev) =>
+              prev && prev.id === companyId
+                ? { ...prev, updates: "completed" as "completed" }
+                : prev
+            );
+            
+            // Remove from localStorage when analysis completes
+            try {
+              const activeAnalyses = JSON.parse(localStorage.getItem('active_analyses') || '{}');
+              delete activeAnalyses[companyId];
+              localStorage.setItem('active_analyses', JSON.stringify(activeAnalyses));
+              console.log(`[Progress Poll] Removed job_id for company ${companyId} from localStorage (completed)`);
+            } catch (error) {
+              console.warn(`[Progress Poll] Failed to remove job_id from localStorage:`, error);
+            }
+            
             clearAnalysisProgress();
+            setAnalyzingCompany(false);
+            setAnalysisCompletionPending(false);
           } else if (status === "failed") {
             setAnalysisStatusMessage(message || "Analysis failed.");
             setAnalysisProgressByCompany((prev) => ({
@@ -1144,7 +1364,27 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 message: message || "Analysis failed.",
               },
             }));
+            // Remove from localStorage when analysis fails
+            try {
+              const activeAnalyses = JSON.parse(localStorage.getItem('active_analyses') || '{}');
+              delete activeAnalyses[companyId];
+              localStorage.setItem('active_analyses', JSON.stringify(activeAnalyses));
+              console.log(`[Progress Poll] Removed job_id for company ${companyId} from localStorage (failed)`);
+            } catch (error) {
+              console.warn(`[Progress Poll] Failed to remove job_id from localStorage:`, error);
+            }
+            
             clearAnalysisProgress();
+          }
+        } else {
+          // Progress not found or not successful yet
+          if (progressData.data?.status === "not_found") {
+            console.log(`[Progress Poll] Progress not found yet for job ${jobId}, will retry in next poll...`);
+            // Don't clear the interval - keep polling until we find progress or analysis completes
+            // The progress might not be stored yet (race condition) or might have expired
+          } else {
+            console.warn(`[Progress Poll] Unexpected response for job ${jobId}:`, progressData);
+            // Don't clear the interval - keep polling
           }
         }
       } catch (error) {
@@ -1152,8 +1392,60 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       }
     };
 
+    // Start polling immediately, then continue every 2 seconds
+    console.log(`[Progress Poll] Executing first poll immediately...`);
     pollProgress();
-    analysisProgressIntervalRef.current = window.setInterval(pollProgress, 2000);
+    
+    // Use a closure to capture the current jobId and companyId
+    const intervalId = window.setInterval(() => {
+      // Double-check the interval is still valid
+      if (analysisProgressIntervalRef.current !== intervalId) {
+        console.warn(`[Progress Poll] Interval ID mismatch! Expected ${intervalId}, got ${analysisProgressIntervalRef.current}. This interval will stop.`);
+        window.clearInterval(intervalId);
+        return;
+      }
+      
+      // Verify we're still polling for the same job
+      if (analysisJobMetaRef.current?.jobId !== jobId) {
+        console.warn(`[Progress Poll] Job ID changed! Expected ${jobId}, got ${analysisJobMetaRef.current?.jobId}. Stopping polling.`);
+        if (analysisProgressIntervalRef.current === intervalId) {
+          window.clearInterval(analysisProgressIntervalRef.current);
+          analysisProgressIntervalRef.current = null;
+        }
+        return;
+      }
+      
+      console.log(`[Progress Poll] Interval triggered for job ${jobId}, company ${companyId}`);
+      pollProgress();
+    }, 2000);
+    
+    // Store the interval ID IMMEDIATELY to prevent it from being cleared
+    analysisProgressIntervalRef.current = intervalId;
+    console.log(`[Progress Poll] ✅ Started polling interval (ID: ${intervalId}) for job ${jobId}, company ${companyId}. Will poll every 2 seconds.`);
+    
+    // Verify interval is actually set
+    if (analysisProgressIntervalRef.current === null) {
+      console.error(`[Progress Poll] ❌ ERROR: Interval was not set!`);
+    } else {
+      // Test that the interval is actually running by checking after a short delay
+      setTimeout(() => {
+        if (analysisProgressIntervalRef.current === intervalId) {
+          console.log(`[Progress Poll] ✅ Interval ${intervalId} is still active after 1 second`);
+        } else {
+          console.error(`[Progress Poll] ❌ Interval ${intervalId} was cleared! Current: ${analysisProgressIntervalRef.current}`);
+          console.error(`[Progress Poll] This should not happen! Something is clearing the interval prematurely.`);
+        }
+      }, 1000);
+      
+      // Also check after 3 seconds to see if it's still running
+      setTimeout(() => {
+        if (analysisProgressIntervalRef.current === intervalId) {
+          console.log(`[Progress Poll] ✅ Interval ${intervalId} is still active after 3 seconds`);
+        } else {
+          console.error(`[Progress Poll] ❌ Interval ${intervalId} was cleared after 3 seconds! Current: ${analysisProgressIntervalRef.current}`);
+        }
+      }, 3000);
+    }
   };
 
   React.useEffect(() => {
@@ -1339,7 +1631,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
     }
   };
 
-  // Function to analyze company using unified analysis endpoint
+  // Function to analyze company using unified analysis endpoint (Celery-based)
   const handleAnalyzeCompany = async () => {
     if (!selectedCompany || !user?.sme_id) {
       setNotification({
@@ -1380,7 +1672,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       const jobIdentifier = `analysis-${companyId ?? "manual"}-${Date.now()}`;
 
-      // Call unified analysis endpoint
+      // Call unified analysis endpoint - returns immediately with task_id
       const formData = new FormData();
       formData.append("company_name", selectedCompany.companyName);
       formData.append("company_location", selectedCompany.location);
@@ -1393,18 +1685,12 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       }
       formData.append("job_id", jobIdentifier);
 
-      if (companyId) {
-        startAnalysisProgressPolling(jobIdentifier, companyId);
-      } else {
-        setAnalysisProgress(5);
-        setAnalysisStatusMessage("Starting analysis...");
-      }
-
+      // Start the analysis task - returns immediately
       const response = await fetch(
         "http://0.0.0.0:8000/api/v1/unified/unified-analysis",
         {
           method: "POST",
-        headers: {
+          headers: {
             ...(localStorage.getItem("auth_token")
               ? {
                   Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
@@ -1417,10 +1703,125 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || "Analysis failed");
+        throw new Error(errorData.detail || "Failed to start analysis");
       }
 
       const result = await response.json();
+      
+      // The endpoint now returns immediately with task_id
+      // We don't wait for the full analysis - it runs in background
+      // Progress is tracked via polling
+      
+      if (!result.success || !result.data) {
+        throw new Error(result.message || "Failed to start analysis");
+      }
+
+      const taskId = result.data.task_id || result.data.job_id;
+      console.log(`Analysis started with task_id: ${taskId}, job_id: ${jobIdentifier}`);
+
+      // Start polling AFTER the backend has stored initial progress in Redis
+      // Backend stores progress BEFORE returning response, so we can start polling immediately
+      if (companyId) {
+        console.log(`[Analysis Start] Starting progress polling for job ${jobIdentifier}, company ${companyId}`);
+        // Wait a bit to ensure backend has finished storing progress in Redis
+        // The POST response means progress is stored, but give it a small delay to be safe
+        setTimeout(() => {
+          console.log(`[Analysis Start] Starting polling after 200ms delay`);
+          startAnalysisProgressPolling(jobIdentifier, companyId);
+        }, 200);
+      } else {
+        setAnalysisProgress(5);
+        setAnalysisStatusMessage("Starting analysis...");
+      }
+
+      // If we don't have a companyId, we still need to poll for completion
+      // and then fetch the result when done
+      if (!companyId) {
+        // Poll for completion and then fetch results
+        const pollForCompletion = async () => {
+          const maxAttempts = 600; // 10 minutes max (1 second intervals)
+          let attempts = 0;
+          
+          const pollInterval = setInterval(async () => {
+            attempts++;
+            
+            try {
+              const progressResponse = await fetch(
+                `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${jobIdentifier}`,
+                {
+                  headers: {
+                    ...(localStorage.getItem("auth_token")
+                      ? {
+                          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                        }
+                      : {}),
+                  },
+                }
+              );
+
+              if (progressResponse.ok) {
+                const progressData = await progressResponse.json();
+                if (progressData.success && progressData.data) {
+                  const status = progressData.data.status;
+                  const percent = progressData.data.percent_complete || progressData.data.percent || 0;
+                  const message = progressData.data.message || "Processing...";
+                  
+                  setAnalysisProgress(percent);
+                  setAnalysisStatusMessage(message);
+                  
+                  if (status === "completed") {
+                    clearInterval(pollInterval);
+                    setAnalyzingCompany(false);
+                    setAnalysisCompletionPending(false);
+                    // Refresh company data to show new analysis results
+                    if (companyId) {
+                      try {
+                        await loadCompanyData(companyId);
+                      } catch (error) {
+                        console.error("Error refreshing company data after analysis:", error);
+                      }
+                    }
+                    setNotification({
+                      open: true,
+                      message: "Analysis completed successfully!",
+                      severity: "success",
+                      companyId: companyId || null,
+                    });
+                  } else if (status === "failed") {
+                    clearInterval(pollInterval);
+                    setAnalyzingCompany(false);
+                    setNotification({
+                      open: true,
+                      message: message || "Analysis failed",
+                      severity: "error",
+                      companyId: null,
+                    });
+                  }
+                }
+              }
+            } catch (error) {
+              console.error("Error polling progress:", error);
+            }
+            
+            if (attempts >= maxAttempts) {
+              clearInterval(pollInterval);
+              setAnalyzingCompany(false);
+              setNotification({
+                open: true,
+                message: "Analysis timed out",
+                severity: "error",
+                companyId: null,
+              });
+            }
+          }, 1000); // Poll every second
+        };
+        
+        pollForCompletion();
+      }
+      
+      // Return early - analysis runs in background
+      // Progress is handled by polling
+      return;
 
       // Store analysis results
       if (result.data) {
@@ -1608,24 +2009,6 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           selectedCompany.id,
           error.message || "Analysis failed."
         );
-      }
-    } finally {
-      if (analysisProgressIntervalRef.current !== null) {
-        window.clearInterval(analysisProgressIntervalRef.current);
-        analysisProgressIntervalRef.current = null;
-      }
-
-      if (!analysisCompletedSuccessfully) {
-        if (analysisResetTimeoutRef.current !== null) {
-          window.clearTimeout(analysisResetTimeoutRef.current);
-          analysisResetTimeoutRef.current = null;
-        }
-        setAnalysisCompletionPending(false);
-        setAnalyzingCompany(false);
-        analysisJobMetaRef.current = null;
-        setAnalysisProgressTarget(0);
-        setAnalysisProgress(0);
-        setAnalysisStatusMessage("Starting analysis...");
       }
     }
   };
@@ -2099,8 +2482,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           const backgroundJobId = `analysis-${newCompanyId}-${Date.now()}`;
           formData.append("job_id", backgroundJobId);
 
-          startAnalysisProgressPolling(backgroundJobId, newCompanyId);
-
+          // Make POST request first
           const analysisResponse = await fetch(
             "http://0.0.0.0:8000/api/v1/unified/unified-analysis",
             {
@@ -2123,29 +2505,37 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
         }
 
         const analysisData = await analysisResponse.json();
+        
+        // Get the actual job_id from the response (backend might use a different one)
+        const actualJobId = analysisData.data?.job_id || analysisData.data?.task_id || backgroundJobId;
+        
+        // Start polling AFTER the POST succeeds and backend has stored progress
+        console.log(`[triggerAnalysis] Starting polling for job ${actualJobId}, company ${newCompanyId}`);
+        setTimeout(() => {
+          startAnalysisProgressPolling(actualJobId, newCompanyId);
+        }, 200);
 
-          // Update company status to completed
+          // Analysis is now running in background - polling will handle completion
+          // Don't call clearAnalysisProgress here - let the polling detect when it's done
+          // The polling will update the company status and clear progress when status === "completed"
+          
+          // Just update the company to show it's being analyzed
           setCompanies((prev) =>
             prev.map((c) =>
               c.id === newCompanyId
                 ? {
           ...c,
-                    updates: "completed" as "completed",
-                    analysis: analysisData.data,
+                    updates: "loading" as "loading", // Mark as loading, polling will update to completed
+                    analysis: analysisData.data, // Store initial response data
                   }
                 : c
             )
           );
-          clearAnalysisProgress(
-            "completed",
-            newCompanyId,
-            `Analysis completed for ${addCompanyForm.name}.`
-          );
 
           setNotification({
             open: true,
-            message: `Analysis completed for ${addCompanyForm.name}!`,
-            severity: "success",
+            message: `Analysis started for ${addCompanyForm.name}. Progress will be shown in real-time.`,
+            severity: "info",
             companyId: newCompanyId,
           });
       } catch (analysisErr) {

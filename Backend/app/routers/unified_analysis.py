@@ -1,505 +1,47 @@
+"""
+Unified Analysis Router - Refactored for Celery Background Processing
+Uses Redis-based progress tracking and Celery tasks
+"""
+
 from fastapi import APIRouter, HTTPException, Form
 from typing import Optional, Dict, Any
 from app.models import APIResponse
-from app.scrapers.serpapi_scraper import SerpApiScraper
-from app.models import Company
-from app.services.advanced_model_service import AdvancedModelService
-from app.services.advanced_data_processor import AdvancedDataProcessor
-from app.services.rag_analysis_service import RAGAnalysisService
-from app.database_mysql_inspire import inspire_db
 from app.config import settings
 from loguru import logger
-import pandas as pd
-import io
 from uuid import uuid4
+import redis
+import json
 from datetime import datetime
-import asyncio
+
+from app.tasks.unified_analysis_task import run_unified_analysis
 
 router = APIRouter()
 
-# In-memory progress tracker for long-running analyses.
-# Keys are job IDs supplied by the client; values contain progress metadata.
-analysis_progress: Dict[str, Dict[str, Any]] = {}
-
-
-def update_analysis_progress(
-    job_id: Optional[str],
-    percent: float,
-    message: str,
-    status: str = "running",
-    extra: Optional[Dict[str, Any]] = None,
-) -> None:
-    """
-    Update the current progress for a running unified analysis.
-    """
-    if not job_id:
-        return
-
-    safe_percent = max(0.0, min(100.0, float(percent)))
-    progress_payload: Dict[str, Any] = {
-        "job_id": job_id,
-        "percent": safe_percent,
-        "message": message,
-        "status": status,
-        "updated_at": datetime.utcnow().isoformat() + "Z",
-    }
-
-    if extra:
-        progress_payload.update(extra)
-
-    analysis_progress[job_id] = progress_payload
-
-
-def finalize_analysis_progress(job_id: Optional[str], status: str, message: str) -> None:
-    """
-    Mark an analysis job as completed or failed and optionally clean up later.
-    """
-    if not job_id:
-        return
-
-    update_analysis_progress(
-        job_id=job_id,
-        percent=100.0,
-        status=status,
-        message=message,
-    )
-
-
-async def run_unified_analysis_background(
-    company_name: str,
-    company_location: str,
-    sme_id: int,
-    sme_objective: str,
-    max_articles: int,
-    company_id: Optional[int],
-    job_identifier: str,
-) -> None:
-    """
-    Background task that runs the full unified analysis pipeline.
-    This function runs asynchronously and updates progress as it goes.
-    """
+# Redis connection for progress tracking with fallback
+def get_redis_client():
+    """Get Redis client with fallback to localhost for local development"""
     try:
-        update_analysis_progress(
-            job_identifier,
-            10.0,
-            "Initializing unified analysis pipeline...",
-            extra={"stage": "initializing"},
-        )
-        logger.info(f"🚀 Starting unified analysis for: {company_name}")
-        
-        # ============================================
-        # STEP 1: Google Scraping (NO LinkedIn)
-        # ============================================
-        logger.info("📰 Step 1/3: Scraping company data from Google...")
-        update_analysis_progress(
-            job_identifier,
-            20.0,
-            "Scraping company articles...",
-            extra={"stage": "scraping"},
-        )
-        
+        # Try the configured URL first
+        client = redis.from_url(settings.redis_url, decode_responses=True, socket_connect_timeout=2)
+        # Test connection
+        client.ping()
+        return client
+    except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+        logger.warning(f"Redis connection failed with {settings.redis_url}, trying localhost fallback: {e}")
         try:
-            # Check if SerpAPI key is configured
-            from app.config import settings
-            if not settings.serpapi_key:
-                finalize_analysis_progress(
-                    job_identifier,
-                    "failed",
-                    "SerpAPI key is not configured. Please add SERPAPI_API_KEY to your .env file. Get a free key at https://serpapi.com/"
-                )
-                return
-            
-            # Create a company object for scraping
-            from datetime import datetime as dt
-            company_obj = Company(
-                id=0,
-                name=company_name,
-                location=company_location,
-                website=None,
-                industry=None,
-                description=None,
-                linkedin_url=None,
-                last_scraped=None,
-                scrape_count=0,
-                created_at=dt.utcnow(),
-                updated_at=dt.utcnow()
-            )
-            
-            # Use SerpAPI scraper directly
-            serpapi_scraper = SerpApiScraper()
-            try:
-                scrape_result = await serpapi_scraper.scrape_company(company_obj)
-            finally:
-                # Ensure session is closed
-                await serpapi_scraper.close()
-            
-            # Get all scraped articles (up to max_articles)
-            articles_data = scrape_result.news_articles[:max_articles]
-            logger.info(f"📊 Retrieved {len(articles_data)} articles (max allowed: {max_articles})")
-            update_analysis_progress(
-                job_identifier,
-                30.0,
-                f"Scraped {len(articles_data)} articles.",
-                extra={"stage": "scraping", "articles_found": len(articles_data)},
-            )
-            
-            if not articles_data:
-                finalize_analysis_progress(
-                    job_identifier,
-                    "failed",
-                    f"No articles found for {company_name}. Please check if the company name and location are correct."
-                )
-                return
-            
-            logger.info(f"✅ Found {len(articles_data)} articles from Google")
-            
-        except Exception as e:
-            logger.error(f"Scraping failed: {e}")
-            finalize_analysis_progress(
-                job_identifier,
-                "failed",
-                f"Failed to scrape articles: {str(e)}"
-            )
-            return
-        
-        # ============================================
-        # STEP 2: Classify Articles Based on SME Objectives
-        # ============================================
-        logger.info("🔍 Step 2/3: Classifying articles based on SME objectives...")
-        update_analysis_progress(
-            job_identifier,
-            40.0,
-            "Classifying articles against SME objectives...",
-            extra={"stage": "classification"},
-        )
-        
-        # Convert articles to DataFrame for classification
-        articles_list = []
-        for article in articles_data:
-            # Access attributes from NewsArticle model
-            articles_list.append({
-                'title': article.title,
-                'content': article.content if article.content else '',
-                'url': article.url,
-                'source': article.source,
-                'published_date': article.published_date.isoformat() if article.published_date else None
-            })
-        
-        df = pd.DataFrame(articles_list)
-        
-        # Initialize classification model
-        model_service = AdvancedModelService()
-        
-        # Classify articles based on SME objectives
-        classification_results = model_service.classify_articles(
-            df=df,
-            company_objective=sme_objective,
-            use_custom_objective=True
-        )
-        
-        # Get the classified DataFrame from classification results if available
-        if 'results' in classification_results:
-            # Recreate df from classification results
-            df_classified = pd.DataFrame(classification_results['results'])
-            # Add url and source from original df
-            if 'url' in df.columns and 'source' in df.columns:
-                df_classified['url'] = df['url'].values
-                df_classified['source'] = df['source'].values
-        else:
-            df_classified = df
-        
-        logger.info(f"✅ Classified {len(df_classified)} articles")
-        update_analysis_progress(
-            job_identifier,
-            50.0,
-            f"Classified {len(df_classified)} articles.",
-            extra={"stage": "classification", "articles_classified": len(df_classified)},
-        )
-        
-        # Check if prediction_label exists in df_classified
-        if 'prediction_label' in df_classified.columns:
-            logger.info(f"   - Directly Relevant: {len(df_classified[df_classified['prediction_label'] == 'Directly Relevant'])}")
-            logger.info(f"   - Indirectly Useful: {len(df_classified[df_classified['prediction_label'] == 'Indirectly Useful'])}")
-            logger.info(f"   - Not Relevant: {len(df_classified[df_classified['prediction_label'] == 'Not Relevant'])}")
-        else:
-            logger.warning("⚠️  'prediction_label' column not found in DataFrame")
-            logger.info(f"   Available columns: {df_classified.columns.tolist()}")
-        
-        # ============================================
-        # STEP 3: Store Classified Articles in Database
-        # ============================================
-        logger.info("💾 Step 3/3: Storing classified articles in database...")
-        update_analysis_progress(
-            job_identifier,
-            60.0,
-            "Storing classified articles to database...",
-            extra={"stage": "storage"},
-        )
-        
-        # First, get or create company
-        # If company_id is provided, use it directly (e.g., from frontend after creating company)
-        if company_id:
-            company = await inspire_db.get_company(company_id)
-            if not company:
-                finalize_analysis_progress(
-                    job_identifier,
-                    "failed",
-                    f"Company with ID {company_id} not found"
-                )
-                return
-            # Verify it belongs to the correct SME
-            if company.get('sme_id') and company['sme_id'] != sme_id:
-                finalize_analysis_progress(
-                    job_identifier,
-                    "failed",
-                    "Company does not belong to this SME"
-                )
-                return
-            logger.info(f"📝 Using provided company ID: {company_name} (ID: {company_id})")
-        else:
-            # Search by name, filtered by sme_id to avoid finding other SMEs' companies
-            company = await inspire_db.get_company_by_name(company_name, sme_id=sme_id)
-            
-            if not company:
-                # Create company with sme_id
-                company_id = await inspire_db.create_company(
-                    name=company_name,
-                    location=company_location,
-                    sme_id=sme_id
-                )
-                logger.info(f"📝 Created new company record: {company_name} (ID: {company_id})")
-            else:
-                company_id = company['company_id']
-                # Update company with sme_id if not set
-                if not company.get('sme_id'):
-                    await inspire_db.update_company(company_id, sme_id=sme_id)
-                logger.info(f"📝 Found existing company: {company_name} (ID: {company_id})")
-        
-        # Store classified articles
-        total_classified_articles = len(df_classified)
-        articles_stored = 0
-        for idx, row in df_classified.iterrows():
-            try:
-                # Get prediction label with fallback
-                prediction_label = row.get('prediction_label', 'Not Relevant')
-                
-                # Get values with fallbacks for optional fields
-                title = row.get('title', 'Untitled')
-                content = row.get('content', 'No content available')
-                url = row.get('url', f'https://example.com/article/{idx}')
-                source = row.get('source', 'Unknown')
-                
-                # Use prediction_label directly (database expects: 'Directly Relevant', 'Indirectly Useful', 'Not Relevant')
-                db_classification = prediction_label if prediction_label in ['Directly Relevant', 'Indirectly Useful', 'Not Relevant'] else 'Not Relevant'
-                
-                # Note: sentiment column doesn't exist in current database, so we skip it
-                article_id = await inspire_db.create_article(
-                    company_id=company_id,
-                    title=title,
-                    url=url or 'https://example.com/article',
-                    content=content or '',
-                    source=source or 'Unknown',
-                    published_date=None,
-                    relevance_score=row.get('confidence_score', 0.0),
-                    classification=db_classification
-                )
-                articles_stored += 1
-            except Exception as e:
-                logger.warning(f"Failed to store article: {e}")
-        
-        logger.info(f"✅ Stored {articles_stored} articles in database")
-        update_analysis_progress(
-            job_identifier,
-            70.0,
-            f"Stored {articles_stored} articles in database.",
-            extra={
-                "stage": "storage",
-                "articles_stored": articles_stored,
-                "articles_total": total_classified_articles,
-            },
-        )
-        
-        # ============================================
-        # STEP 4: RAG Analysis (10 Categories)
-        # ============================================
-        logger.info("🤖 Step 4/4: Running RAG analysis (10 categories)...")
-        update_analysis_progress(
-            job_identifier,
-            80.0,
-            "Running RAG analysis (10 categories)...",
-            extra={"stage": "rag_analysis"},
-        )
-        
-        # Convert DataFrame to list of dicts for RAG analysis
-        articles_for_analysis = []
-        for _, row in df_classified.iterrows():
-            articles_for_analysis.append({
-                'title': row['title'],
-                'content': row['content']
-            })
-        
-        # Initialize RAG service
-        logger.info("📦 Initializing RAG service...")
-        rag_service = RAGAnalysisService(
-            milvus_host=settings.milvus_host,
-            milvus_port=settings.milvus_port,
-            ollama_host=settings.ollama_base_url,
-            llm_model=settings.ollama_model
-        )
-        
-        # Run RAG analysis (comprehensive extraction of 10 categories)
-        logger.info(f"🔬 Analyzing {len(articles_for_analysis)} articles with RAG...")
-        rag_results = rag_service.analyze_comprehensive(
-            articles=articles_for_analysis,
-            company_name=company_name,
-            sme_objective=sme_objective
-        )
-        
-        # Extract the analysis results
-        analysis_results = rag_results['analysis']
-        rag_metadata = rag_results['metadata']
-        
-        logger.info("✅ RAG analysis completed")
-        logger.info(f"   Items extracted: {rag_metadata['total_items_extracted']}")
-        logger.info(f"   Average confidence: {rag_metadata['average_confidence']:.2%}")
-        logger.info(f"   Duration: {rag_metadata['duration_seconds']:.1f}s")
-        update_analysis_progress(
-            job_identifier,
-            90.0,
-            "RAG analysis complete. Preparing results...",
-            extra={
-                "stage": "rag_analysis",
-                "items_extracted": rag_metadata['total_items_extracted'],
-                "average_confidence": rag_metadata['average_confidence'],
-            },
-        )
-        
-        # ============================================
-        # STEP 5: Store RAG Analysis in Database
-        # ============================================
-        logger.info("💾 Storing RAG analysis results in database...")
-        
-        # Format RAG results for database storage
-        import json
-        
-        # Convert RAG category results to strings for database storage
-        def format_category_for_db(category_result):
-            """Format a RAG category result for database storage, truncating if too large"""
-            if not category_result or 'data' not in category_result:
-                return ''
-            # MySQL TEXT field max size is 65,535 bytes, but we'll use 50KB to be extra safe
-            # Account for UTF-8 encoding (some chars are multi-byte) and multiple fields in one query
-            max_bytes = 50 * 1024  # 50KB per field
-            json_str = json.dumps(category_result['data'], indent=2)
-            
-            # Truncate if too large
-            encoded = json_str.encode('utf-8')
-            if len(encoded) > max_bytes:
-                # Truncate string, ensuring we don't break UTF-8 encoding
-                truncated = encoded[:max_bytes]
-                # Remove any incomplete UTF-8 sequences at the end
-                while truncated and truncated[-1] & 0x80 and not (truncated[-1] & 0x40):
-                    truncated = truncated[:-1]
-                json_str = truncated.decode('utf-8', errors='ignore')
-                # Try to close any open JSON structures
-                open_braces = json_str.count('{') - json_str.count('}')
-                if open_braces > 0:
-                    # Add closing braces
-                    json_str += '\n' + '  ' * (open_braces - 1) + '}' * open_braces
-                logger.warning(f"Truncated category data from {len(encoded)} to {len(truncated)} bytes")
-            
-            return json_str
-        
-        # STEP 5A: Save Company Info, Strengths, Opportunities in COMPANY table
-        try:
-            logger.info("💾 Saving Company Info, Strengths, Opportunities to company table...")
-            
-            # Extract the three categories for company table
-            company_info_data = analysis_results.get('company_info', {})
-            strengths_data = analysis_results.get('strengths', {})
-            opportunities_data = analysis_results.get('opportunities', {})
-            
-            # Ensure we have dictionaries, not lists
-            if isinstance(company_info_data, list):
-                company_info_data = {'data': company_info_data, 'error': 'Unexpected list format'}
-            elif not isinstance(company_info_data, dict):
-                company_info_data = {}
-                
-            if isinstance(strengths_data, list):
-                strengths_data = {'data': strengths_data, 'error': 'Unexpected list format'}
-            elif not isinstance(strengths_data, dict):
-                strengths_data = {}
-                
-            if isinstance(opportunities_data, list):
-                opportunities_data = {'data': opportunities_data, 'error': 'Unexpected list format'}
-            elif not isinstance(opportunities_data, dict):
-                opportunities_data = {}
-            
-            # Format for storage
-            company_info_str = format_category_for_db(company_info_data)
-            strengths_str = format_category_for_db(strengths_data)
-            opportunities_str = format_category_for_db(opportunities_data)
-            
-            # Also extract industry from company_info if available
-            industry = None
-            if company_info_data and isinstance(company_info_data, dict) and 'data' in company_info_data:
-                data = company_info_data['data']
-                if isinstance(data, dict):
-                    industry = data.get('industry')
-            
-            # Update company record with RAG-extracted intelligence
-            await inspire_db.update_company(
-                company_id=company_id,
-                company_info=company_info_str,
-                strengths=strengths_str,
-                opportunities=opportunities_str,
-                industry=industry if industry else None
-            )
-            
-            logger.info(f"✅ Saved Company Info, Strengths, Opportunities to company table (ID: {company_id})")
-            
-        except Exception as e:
-            logger.error(f"Failed to save company intelligence: {e}")
-            # Continue anyway
-        
-        # STEP 5B: Save remaining 7 categories in ANALYSIS table
-        try:
-            from datetime import date
-            
-            analysis_id = await inspire_db.create_analysis(
-                company_id=company_id,
-                latest_updates=format_category_for_db(analysis_results.get('latest_updates')),
-                challenges=format_category_for_db(analysis_results.get('challenges')),
-                decision_makers=format_category_for_db(analysis_results.get('decision_makers')),
-                market_position=format_category_for_db(analysis_results.get('market_position')),
-                future_plans=format_category_for_db(analysis_results.get('future_plans')),
-                action_plan=format_category_for_db(analysis_results.get('action_plan')),
-                solutions=format_category_for_db(analysis_results.get('solution')),
-                analysis_type='RAG',
-                date_analyzed=date.today(),
-                status='COMPLETED'
-            )
-            
-            logger.info(f"✅ Stored RAG analysis in analysis table (ID: {analysis_id})")
-            
-        except Exception as e:
-            logger.error(f"Failed to store analysis: {e}")
-            # Continue anyway, analysis is already complete
-        
-        logger.info("✅ Unified analysis with RAG completed successfully!")
-        finalize_analysis_progress(
-            job_identifier,
-            "completed",
-            f"Analysis completed for {company_name}.",
-        )
-        
-    except Exception as e:
-        logger.error(f"Unified analysis failed: {e}")
-        finalize_analysis_progress(
-            job_identifier,
-            "failed",
-            f"Unified analysis failed: {str(e)}",
-        )
+            # Fallback to localhost for local development
+            fallback_url = settings.redis_url.replace('redis://redis:', 'redis://localhost:')
+            client = redis.from_url(fallback_url, decode_responses=True, socket_connect_timeout=2)
+            client.ping()
+            logger.info(f"Connected to Redis at {fallback_url}")
+            return client
+        except Exception as e2:
+            logger.error(f"Redis connection failed completely: {e2}")
+            # Return None - we'll handle this in the endpoints
+            return None
+
+redis_client = get_redis_client()
+
 
 @router.post(
     "/unified-analysis",
@@ -507,8 +49,8 @@ async def run_unified_analysis_background(
     description="""
     **Complete one-endpoint solution for company analysis with RAG (Retrieval-Augmented Generation).**
     
-    **IMPORTANT: This endpoint returns immediately and runs the analysis in the background.**
-    Use the `/unified-analysis/progress/{job_id}` endpoint to track progress.
+    **IMPORTANT: This endpoint returns immediately and runs the analysis in the background using Celery.**
+    Use the `/unified-analysis/progress/{task_id}` endpoint to track progress.
     
     This endpoint orchestrates a complete analysis pipeline:
     
@@ -550,9 +92,9 @@ async def run_unified_analysis_background(
     - RAG provides actionable, SME-personalized insights
     - Both articles and analysis are stored in database
     - Uses `sme_id` to link everything to your SME
-    - Runs in background - poll `/unified-analysis/progress/{job_id}` for status
+    - Runs in background via Celery - poll `/unified-analysis/progress/{task_id}` for status
     """,
-    response_description="Analysis started in background. Use job_id to track progress."
+    response_description="Analysis started in background. Use task_id to track progress."
 )
 async def unified_company_analysis(
     company_name: str = Form(..., description="Name of the company to analyze"),
@@ -564,34 +106,57 @@ async def unified_company_analysis(
     job_id: Optional[str] = Form(None, description="Optional: Client-supplied job identifier for progress tracking"),
 ):
     """
-    Unified endpoint that starts analysis in the background and returns immediately.
-    The analysis runs asynchronously and progress can be tracked via the progress endpoint.
+    Unified endpoint that starts analysis in the background using Celery and returns immediately.
+    The analysis runs asynchronously in a Celery worker and progress can be tracked via the progress endpoint.
     """
     # Generate or use provided job identifier
-    job_identifier = job_id or f"{sme_id}-{company_name}-{uuid4().hex}"
+    job_identifier = job_id or f"{sme_id}-{company_name}-{uuid4().hex[:8]}"
     
     # Validate basic inputs
     if not company_name or not company_location:
-        raise HTTPException(
+                raise HTTPException(
             status_code=400,
             detail="company_name and company_location are required"
         )
     
-    # Start the analysis as a background task
+    # Start the analysis as a Celery task
     logger.info(f"🚀 Queuing unified analysis for: {company_name} (job_id: {job_identifier})")
     
-    # Initialize progress
-    update_analysis_progress(
-        job_identifier,
-        5.0,
-        "Analysis queued. Starting background processing...",
-        extra={"stage": "queued"},
-    )
+    # Initialize progress in Redis (with error handling)
+    initial_progress = {
+        "job_id": job_identifier,
+        "task_id": None,  # Will be set when task starts
+        "percent": 0.0,
+        "message": "Analysis queued. Starting background processing...",
+        "status": "pending",
+        "step_name": "queued",
+        "percent_complete": 0.0,
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
     
-    # Start background task using asyncio.create_task
-    # This will run concurrently and not block the response
-    asyncio.create_task(
-        run_unified_analysis_background(
+    if redis_client:
+        try:
+            redis_key = f"analysis_progress:{job_identifier}"
+            redis_client.setex(
+                redis_key,
+                3600,
+                json.dumps(initial_progress)
+            )
+            # Verify it was stored
+            stored = redis_client.get(redis_key)
+            if stored:
+                logger.info(f"✅ Initial progress stored in Redis: {redis_key}")
+            else:
+                logger.error(f"❌ Failed to verify progress storage in Redis: {redis_key}")
+        except Exception as e:
+            logger.error(f"❌ Failed to store initial progress in Redis: {e}")
+            logger.exception(e)
+    else:
+        logger.error("❌ Redis not available - progress tracking will not work!")
+    
+    # Queue the Celery task
+    try:
+        task = run_unified_analysis.delay(
             company_name=company_name,
             company_location=company_location,
             sme_id=sme_id,
@@ -600,40 +165,171 @@ async def unified_company_analysis(
             company_id=company_id,
             job_identifier=job_identifier,
         )
-    )
+        
+        # Update progress with actual Celery task ID
+        initial_progress["task_id"] = task.id
+        initial_progress["status"] = "running"
+        initial_progress["message"] = "Analysis started. Processing in background..."
+        
+        if redis_client:
+            try:
+                redis_key = f"analysis_progress:{job_identifier}"
+                redis_client.setex(
+                    redis_key,
+                    3600,
+                    json.dumps(initial_progress)
+                )
+                # Verify it was stored
+                stored = redis_client.get(redis_key)
+                if stored:
+                    logger.info(f"✅ Updated progress stored in Redis: {redis_key} (task_id: {task.id})")
+                else:
+                    logger.error(f"❌ Failed to verify progress update in Redis: {redis_key}")
+            except Exception as e:
+                logger.error(f"❌ Failed to update progress in Redis: {e}")
+                logger.exception(e)
+        
+        logger.info(f"✅ Task queued: {task.id} (job_id: {job_identifier})")
+        
+    except Exception as e:
+        logger.error(f"Failed to queue task: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start analysis: {str(e)}"
+        )
     
     # Return immediately with job_id for tracking
     return APIResponse(
         success=True,
-        message=f"Unified analysis started in background for {company_name}. Use the job_id to track progress.",
+        message=f"Unified analysis started in background for {company_name}. Use the task_id to track progress.",
         data={
             "job_id": job_identifier,
+            "task_id": task.id,
             "company_name": company_name,
-            "status": "queued",
+            "status": "pending",
             "progress_endpoint": f"/api/v1/unified/unified-analysis/progress/{job_identifier}",
+            "result_endpoint": f"/api/v1/unified/unified-analysis/result/{job_identifier}",
             "message": "Analysis is running in the background. Poll the progress endpoint to track status."
         }
-    )
+        )
 
 
 @router.get(
     "/unified-analysis/progress/{job_id}",
     summary="Get progress for a running unified analysis job",
-    description="Return the latest percentage completion and status message for the specified analysis job."
+    description="""
+    Return the latest progress information for the specified analysis job.
+    
+    Status values:
+    - `pending`: Task is queued but not yet started
+    - `running`: Task is currently executing
+    - `completed`: Task completed successfully
+    - `failed`: Task failed with an error
+    
+    Progress includes:
+    - `percent_complete`: 0-100
+    - `step_name`: Current stage (scraping, classification, rag_analysis, etc.)
+    - `message`: Human-readable status message
+    - `updated_at`: Last update timestamp
+    """
 )
 async def get_unified_analysis_progress(job_id: str):
-    progress = analysis_progress.get(job_id)
-    if not progress:
+    """Get progress for a running analysis job from Redis"""
+    try:
+        if not redis_client:
+            return APIResponse(
+                success=False,
+                message="Redis is not available. Please ensure Redis is running.",
+                data={"job_id": job_id, "status": "redis_unavailable"},
+            )
+        
+        redis_key = f"analysis_progress:{job_id}"
+        progress_json = redis_client.get(redis_key)
+        if not progress_json:
+            # Log all keys matching the pattern for debugging
+            try:
+                all_keys = redis_client.keys("analysis_progress:*")
+                logger.warning(f"Progress not found for {redis_key}. Available keys: {all_keys[:10]}")  # Show first 10 keys
+            except:
+                pass
+            return APIResponse(
+                success=False,
+                message="Progress not found for the provided job_id. It may have expired (1 hour TTL) or never existed.",
+                data={"job_id": job_id, "status": "not_found"},
+            )
+        
+        progress = json.loads(progress_json)
+        return APIResponse(
+            success=True,
+            message="Progress retrieved successfully.",
+            data=progress,
+        )
+    except redis.exceptions.ConnectionError as e:
+        logger.error(f"Redis connection error retrieving progress for {job_id}: {e}")
         return APIResponse(
             success=False,
-            message="Progress not found for the provided job_id. It may have expired or never existed.",
+            message="Redis connection error. Please ensure Redis is running.",
+            data={"job_id": job_id, "status": "redis_error"},
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving progress for {job_id}: {e}")
+        return APIResponse(
+            success=False,
+            message=f"Error retrieving progress: {str(e)}",
             data={"job_id": job_id},
         )
 
-    return APIResponse(
-        success=True,
-        message="Progress retrieved successfully.",
-        data=progress,
+
+@router.get(
+    "/unified-analysis/result/{job_id}",
+    summary="Get final result for a completed unified analysis job",
+    description="""
+    Retrieve the final result data for a completed analysis job.
+    Only available after the task status is 'completed'.
+    Results expire after 1 hour.
+    """
+)
+async def get_unified_analysis_result(job_id: str):
+    """Get final result for a completed analysis job from Redis"""
+    try:
+        if not redis_client:
+            return APIResponse(
+                success=False,
+                message="Redis is not available. Please ensure Redis is running.",
+                data={"job_id": job_id, "status": "redis_unavailable"},
+            )
+        
+        result_json = redis_client.get(f"analysis_result:{job_id}")
+        if not result_json:
+            # Check if task is still running
+            progress_json = redis_client.get(f"analysis_progress:{job_id}")
+            if progress_json:
+                progress = json.loads(progress_json)
+                if progress.get("status") in ["pending", "running"]:
+                    return APIResponse(
+                        success=False,
+                        message="Analysis is still in progress. Use the progress endpoint to track status.",
+                        data={"job_id": job_id, "status": progress.get("status")},
+                    )
+            
+            return APIResponse(
+                success=False,
+                message="Result not found. The analysis may not be completed yet, or the result has expired (1 hour TTL).",
+                data={"job_id": job_id},
+            )
+
+        result = json.loads(result_json)
+        return APIResponse(
+            success=True,
+            message="Result retrieved successfully.",
+            data=result,
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving result for {job_id}: {e}")
+        return APIResponse(
+            success=False,
+            message=f"Error retrieving result: {str(e)}",
+            data={"job_id": job_id},
     )
 
 
@@ -647,6 +343,7 @@ async def unified_analysis_info():
     return {
         "service": "Unified Company Analysis with RAG",
         "description": "Complete one-endpoint solution for company analysis using Retrieval-Augmented Generation",
+        "architecture": "Celery + Redis for background processing",
         "steps": [
             "1. Scrape company data from Google (SerpAPI)",
             "2. Classify articles based on SME objectives (ML-based)",
@@ -674,7 +371,9 @@ async def unified_analysis_info():
             "LLM generation (Llama 3.1)",
             "SME-personalized insights (Action Plan & Solution)",
             "Automatic database storage",
-            "Returns all articles with classifications"
+            "Background processing with Celery",
+            "Redis-based progress tracking",
+            "CPU-only mode to prevent PyTorch crashes"
         ],
         "technology": {
             "scraping": "SerpAPI",
@@ -682,10 +381,16 @@ async def unified_analysis_info():
             "rag_embeddings": "all-MiniLM-L6-v2 (384-dim)",
             "vector_storage": "Milvus (with in-memory fallback)",
             "llm": "Llama 3.1 via Ollama",
-            "retrieval": "Cosine similarity (top-5)"
+            "retrieval": "Cosine similarity (top-5)",
+            "background_processing": "Celery",
+            "progress_tracking": "Redis",
+            "pytorch_mode": "CPU-only (prevents SIGSEGV crashes)"
         },
-        "endpoint": "/api/v1/unified/unified-analysis",
-        "method": "POST",
+        "endpoints": {
+            "start_analysis": "/api/v1/unified/unified-analysis",
+            "check_progress": "/api/v1/unified/unified-analysis/progress/{job_id}",
+            "get_result": "/api/v1/unified/unified-analysis/result/{job_id}"
+        },
         "response_includes": [
             "All scraped articles (with content)",
             "Article classifications (Directly Relevant, Indirectly Useful, Not Relevant)",
@@ -694,4 +399,3 @@ async def unified_analysis_info():
             "RAG metadata (chunks, embeddings, performance)"
         ]
     }
-
