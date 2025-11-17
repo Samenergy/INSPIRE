@@ -71,9 +71,11 @@ _patched_marshmallow = _patch_marshmallow()
 # Milvus (optional, with in-memory fallback)
 try:
     from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
+    from pymilvus.exceptions import MilvusException
     MILVUS_AVAILABLE = True
 except ImportError:
     connections = Collection = FieldSchema = CollectionSchema = DataType = utility = None  # type: ignore
+    MilvusException = Exception  # type: ignore
     MILVUS_AVAILABLE = False
     logger.warning("pymilvus not available, using in-memory vector storage")
 
@@ -246,7 +248,7 @@ class RAGAnalysisService:
                         collection_exists = False
                         try:
                             collection_exists = utility.has_collection(collection_name)
-                        except Exception as check_exc:
+                        except (MilvusException, Exception) as check_exc:
                             logger.warning(f"⚠️ Error checking Milvus collection existence during cleanup: {check_exc}")
                             collection_exists = False
                         
@@ -300,7 +302,7 @@ class RAGAnalysisService:
         collection_exists = False
         try:
             collection_exists = utility.has_collection(collection_name)
-        except Exception as check_exc:
+        except (MilvusException, Exception) as check_exc:
             logger.warning(f"⚠️ Error checking if Milvus collection exists: {check_exc}")
             collection_exists = False
         
@@ -353,16 +355,24 @@ class RAGAnalysisService:
     
     def _retrieve_milvus(self, query: str, top_k: int) -> List[Dict[str, Any]]:
         """Retrieve relevant chunks from Milvus"""
-        query_embedding = self._generate_embeddings([query])[0].tolist()
-        
-        search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
-        results = self.collection.search(
-            data=[query_embedding],
-            anns_field="embedding",
-            param=search_params,
-            limit=top_k,
-            output_fields=["chunk_text", "article_title"]
-        )
+        try:
+            query_embedding = self._generate_embeddings([query])[0].tolist()
+            
+            search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+            results = self.collection.search(
+                data=[query_embedding],
+                anns_field="embedding",
+                param=search_params,
+                limit=top_k,
+                output_fields=["chunk_text", "article_title"]
+            )
+        except (MilvusException, Exception) as exc:
+            logger.warning(f"⚠️ Failed to retrieve from Milvus: {exc}. Falling back to in-memory.")
+            # If Milvus fails, try to use in-memory if available
+            if hasattr(self, 'in_memory_chunks') and self.in_memory_chunks:
+                return self._retrieve_memory(query, top_k)
+            # Otherwise return empty list
+            return []
         
         chunks = []
         threshold = self.hyperparameters['similarity_threshold']
@@ -607,7 +617,15 @@ class RAGAnalysisService:
         top_k = self.hyperparameters['top_k']
         
         if self.milvus_available and self.collection:
-            chunks = self._retrieve_milvus(query, top_k)
+            try:
+                chunks = self._retrieve_milvus(query, top_k)
+                # If Milvus retrieval returns empty and we have in-memory fallback, use it
+                if not chunks and hasattr(self, 'in_memory_chunks') and self.in_memory_chunks:
+                    logger.info("ℹ️ Milvus retrieval returned no results, using in-memory fallback")
+                    chunks = self._retrieve_memory(query, top_k)
+            except (MilvusException, Exception) as exc:
+                logger.warning(f"⚠️ Milvus retrieval failed: {exc}. Using in-memory fallback.")
+                chunks = self._retrieve_memory(query, top_k) if hasattr(self, 'in_memory_chunks') and self.in_memory_chunks else []
         else:
             chunks = self._retrieve_memory(query, top_k)
         
@@ -755,27 +773,37 @@ class RAGAnalysisService:
                         # Check if collection exists with proper error handling
                         try:
                             collection_exists = utility.has_collection(collection_name)
-                        except Exception as check_exc:
+                        except (MilvusException, Exception) as check_exc:
                             logger.warning(f"⚠️ Error checking Milvus collection existence: {check_exc}")
                             collection_exists = False
                         
                         if collection_exists:
-                            self.collection = Collection(name=collection_name)
-                            self.collection.load()
-                            chunk_count = vector_cache_entry.get('chunk_count', 0)
-                            vector_storage_used = 'milvus'
-                            vector_store_reused = True
-                            logger.info(f"♻️ Reusing Milvus collection '{collection_name}' ({chunk_count} chunks)")
+                            try:
+                                self.collection = Collection(name=collection_name)
+                                self.collection.load()
+                                chunk_count = vector_cache_entry.get('chunk_count', 0)
+                                vector_storage_used = 'milvus'
+                                vector_store_reused = True
+                                logger.info(f"♻️ Reusing Milvus collection '{collection_name}' ({chunk_count} chunks)")
+                            except (MilvusException, Exception) as load_exc:
+                                logger.warning(f"⚠️ Failed to load Milvus collection '{collection_name}': {load_exc}. Regenerating vectors.")
+                                vector_cache_entry = None
+                                self.collection = None
+                                # Disable Milvus for this analysis session to avoid repeated failures
+                                self.milvus_available = False
+                                logger.info("ℹ️ Milvus disabled for this analysis, using in-memory storage")
                         else:
                             vector_cache_entry = None
                             logger.info(f"ℹ️ Milvus collection '{collection_name}' not found; regenerating vectors.")
                     else:
                         vector_cache_entry = None
                         logger.info("ℹ️ No collection name in cache; regenerating vectors.")
-                except Exception as exc:
+                except (MilvusException, Exception) as exc:
                     vector_cache_entry = None
                     self.collection = None
-                    logger.warning(f"⚠️ Failed to reuse Milvus collection: {exc}. Regenerating vectors.")
+                    # Disable Milvus for this analysis session
+                    self.milvus_available = False
+                    logger.warning(f"⚠️ Failed to reuse Milvus collection: {exc}. Regenerating vectors with in-memory storage.")
             elif not self.milvus_available and vector_cache_entry.get('vector_storage') == 'memory':
                 try:
                     self.in_memory_chunks = copy.deepcopy(vector_cache_entry['chunks'])
@@ -830,10 +858,11 @@ class RAGAnalysisService:
                         'chunk_count': chunk_count,
                         'stored_at': datetime.now().isoformat(),
                     })
-                except Exception as exc:
+                except (MilvusException, Exception) as exc:
                     logger.warning(f"⚠️ Failed to store vectors in Milvus: {exc}. Falling back to in-memory storage.")
-                    # Clear any partial Milvus state
+                    # Clear any partial Milvus state and disable Milvus for this session
                     self.collection = None
+                    self.milvus_available = False
                     # Fall back to in-memory storage
                     self._store_vectors_memory(all_chunks)
                     vector_storage_used = 'in-memory'
