@@ -777,7 +777,7 @@ class RAGAnalysisService:
                     collection_name = vector_cache_entry.get('collection_name')
                     if collection_name:
                         # Check if collection exists with proper error handling
-                        # Wrap in a more defensive try-except to catch any Milvus errors
+                        # If ANY error occurs, disable Milvus and use in-memory storage
                         collection_exists = False
                         try:
                             # Suppress pymilvus error logging temporarily
@@ -793,6 +793,11 @@ class RAGAnalysisService:
                             # Catch ANY exception, not just MilvusException
                             logger.warning(f"⚠️ Error checking Milvus collection existence: {type(check_exc).__name__}: {check_exc}")
                             collection_exists = False
+                            # Disable Milvus immediately to prevent further errors
+                            self.milvus_available = False
+                            self.collection = None
+                            vector_cache_entry = None
+                            logger.info("ℹ️ Milvus disabled due to collection check error, will use in-memory storage")
                         
                         if collection_exists:
                             try:
