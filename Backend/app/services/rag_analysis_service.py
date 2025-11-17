@@ -242,7 +242,15 @@ class RAGAnalysisService:
                 collection_name = old_entry.get('collection_name')
                 if collection_name:
                     try:
-                        if utility.has_collection(collection_name):
+                        # Check if collection exists with proper error handling
+                        collection_exists = False
+                        try:
+                            collection_exists = utility.has_collection(collection_name)
+                        except Exception as check_exc:
+                            logger.warning(f"⚠️ Error checking Milvus collection existence during cleanup: {check_exc}")
+                            collection_exists = False
+                        
+                        if collection_exists:
                             Collection(name=collection_name).drop()
                             logger.info(f"🧹 Dropped unused Milvus collection: {collection_name}")
                     except Exception as exc:
@@ -288,7 +296,15 @@ class RAGAnalysisService:
     
     def _store_vectors_milvus(self, chunks: List[Dict[str, Any]], collection_name: str):
         """Store chunks and embeddings in Milvus"""
-        if utility.has_collection(collection_name):
+        # Check if collection exists with proper error handling
+        collection_exists = False
+        try:
+            collection_exists = utility.has_collection(collection_name)
+        except Exception as check_exc:
+            logger.warning(f"⚠️ Error checking if Milvus collection exists: {check_exc}")
+            collection_exists = False
+        
+        if collection_exists:
             try:
                 existing_collection = Collection(name=collection_name)
                 existing_collection.release()
@@ -805,14 +821,29 @@ class RAGAnalysisService:
             # Step 3: Store vectors
             if self.milvus_available:
                 collection_name = self._get_collection_name(company_name, articles_signature)
-                self._store_vectors_milvus(all_chunks, collection_name)
-                vector_storage_used = 'milvus'
-                self._update_vector_cache(vector_signature, {
-                    'vector_storage': 'milvus',
-                    'collection_name': collection_name,
-                    'chunk_count': chunk_count,
-                    'stored_at': datetime.now().isoformat(),
-                })
+                try:
+                    self._store_vectors_milvus(all_chunks, collection_name)
+                    vector_storage_used = 'milvus'
+                    self._update_vector_cache(vector_signature, {
+                        'vector_storage': 'milvus',
+                        'collection_name': collection_name,
+                        'chunk_count': chunk_count,
+                        'stored_at': datetime.now().isoformat(),
+                    })
+                except Exception as exc:
+                    logger.warning(f"⚠️ Failed to store vectors in Milvus: {exc}. Falling back to in-memory storage.")
+                    # Clear any partial Milvus state
+                    self.collection = None
+                    # Fall back to in-memory storage
+                    self._store_vectors_memory(all_chunks)
+                    vector_storage_used = 'in-memory'
+                    self._update_vector_cache(vector_signature, {
+                        'vector_storage': 'memory',
+                        'chunks': copy.deepcopy(self.in_memory_chunks),
+                        'embeddings': self.in_memory_embeddings.copy(),
+                        'chunk_count': chunk_count,
+                        'stored_at': datetime.now().isoformat(),
+                    })
             else:
                 self._store_vectors_memory(all_chunks)
                 vector_storage_used = 'in-memory'
