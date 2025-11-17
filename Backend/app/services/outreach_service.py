@@ -325,40 +325,64 @@ Format your response as JSON:
                 }
             }
             
-            # Try multiple URLs in case of DNS issues
-            # First try the configured URL, then fallback to localhost
+            # Try multiple URLs in case of DNS/hostname issues
+            # First try the configured URL, then fallback to localhost or ollama
             urls_to_try = [self.ollama_url]
             
-            # If configured URL uses 'ollama' hostname, also try 'localhost'
-            if 'ollama' in self.ollama_url and 'localhost' not in self.ollama_url:
-                localhost_url = self.ollama_url.replace('ollama', 'localhost')
-                urls_to_try.append(localhost_url)
+            # Extract hostname and port to build fallback URLs (matching RAG service logic)
+            url_match = re.match(r'(https?://)([^:/]+)(:\d+)?(/.*)?$', self.ollama_url)
+            if url_match:
+                protocol, hostname, port, path = url_match.groups()
+                port = port or ':11434'  # Default Ollama port
+                path = path or ''
+                
+                # If configured URL uses 'ollama' hostname (Docker), also try 'localhost'
+                if 'ollama' in hostname and 'localhost' not in hostname:
+                    localhost_url = f"{protocol}localhost{port}{path}"
+                    urls_to_try.append(localhost_url)
+                # If configured URL uses 'localhost', also try 'ollama' (for Docker)
+                elif 'localhost' in hostname and 'ollama' not in hostname:
+                    ollama_url = f"{protocol}ollama{port}{path}"
+                    urls_to_try.append(ollama_url)
             
             # Use requests (synchronous) in a thread pool to avoid blocking
             # This matches how RAG service connects to Ollama successfully
             def _make_request(url):
                 with requests.Session() as session:
+                    api_url = f"{url}/api/generate"
+                    logger.debug(f"Trying Ollama at: {api_url}")
+                    # Use longer timeout for LLM generation (120s like RAG service)
+                    # Connection timeout: 10s, Read timeout: 120s
                     response = session.post(
-                        f"{url}/api/generate",
+                        api_url,
                         json=payload,
-                        timeout=60
+                        timeout=(10, 120)  # (connect timeout, read timeout)
                     )
                     if response.status_code == 200:
+                        logger.debug(f"✅ Successfully connected to Ollama at: {url}")
                         return response.json()
                     else:
                         raise Exception(f"LLM API returned status {response.status_code}")
             
             # Try each URL until one works
             last_error = None
+            generated_text = None
             for url in urls_to_try:
                 try:
-                    api_url = f"{url}/api/generate"
-                    logger.info(f"Calling Ollama at: {api_url}")
+                    logger.info(f"Calling Ollama at: {url}/api/generate")
                     
                     # Run the synchronous request in a thread pool
                     result = await asyncio.to_thread(_make_request, url)
                     generated_text = result.get('response', '')
                     break  # Success, exit the loop
+                except requests.exceptions.ConnectTimeout as e:
+                    last_error = e
+                    logger.warning(f"Connection timeout to {url}, trying next URL...")
+                    continue
+                except requests.exceptions.ReadTimeout as e:
+                    last_error = e
+                    logger.warning(f"Read timeout from {url}, trying next URL...")
+                    continue
                 except requests.exceptions.ConnectionError as e:
                     last_error = e
                     logger.warning(f"Failed to connect to {url}, trying next URL...")
@@ -367,9 +391,13 @@ Format your response as JSON:
                     last_error = e
                     logger.warning(f"Error connecting to {url}: {e}, trying next URL...")
                     continue
-            else:
+            
+            if generated_text is None:
                 # All URLs failed
-                raise last_error or Exception("All Ollama connection attempts failed")
+                error_msg = f"All Ollama connection attempts failed. Last error: {last_error}"
+                logger.error(error_msg)
+                logger.error(f"Tried URLs: {urls_to_try}")
+                raise Exception(error_msg)
             
             # Try to parse JSON response
             try:
