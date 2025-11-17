@@ -352,17 +352,22 @@ Format your response as JSON:
                     api_url = f"{url}/api/generate"
                     logger.debug(f"Trying Ollama at: {api_url}")
                     # Use longer timeout for LLM generation (120s like RAG service)
-                    # Connection timeout: 10s, Read timeout: 120s
+                    # Match RAG service exactly: single timeout value
                     response = session.post(
                         api_url,
                         json=payload,
-                        timeout=(10, 120)  # (connect timeout, read timeout)
+                        timeout=120
                     )
                     if response.status_code == 200:
                         logger.debug(f"✅ Successfully connected to Ollama at: {url}")
                         return response.json()
                     else:
-                        raise Exception(f"LLM API returned status {response.status_code}")
+                        error_text = response.text[:500] if response.text else "No error message"
+                        logger.error(f"Ollama returned status {response.status_code}: {error_text}")
+                        raise Exception(f"LLM API returned status {response.status_code}: {error_text}")
+            
+            # Log the payload being sent (for debugging)
+            logger.debug(f"Ollama payload: model={payload['model']}, prompt_length={len(payload['prompt'])}, options={payload['options']}")
             
             # Try each URL until one works
             last_error = None
@@ -374,6 +379,7 @@ Format your response as JSON:
                     # Run the synchronous request in a thread pool
                     result = await asyncio.to_thread(_make_request, url)
                     generated_text = result.get('response', '')
+                    logger.info(f"✅ Successfully received response from Ollama (length: {len(generated_text)})")
                     break  # Success, exit the loop
                 except requests.exceptions.ConnectTimeout as e:
                     last_error = e
