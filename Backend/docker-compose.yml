@@ -1,5 +1,9 @@
 version: '3.8'
 
+networks:
+  backend_network:
+    driver: bridge
+
 services:
   # FastAPI Backend
   app:
@@ -23,6 +27,8 @@ services:
       - ollama
     volumes:
       - ./logs:/app/logs
+    networks:
+      - backend_network
     restart: unless-stopped
 
   # Celery Worker for Background Tasks
@@ -46,6 +52,8 @@ services:
       - ollama
     volumes:
       - ./logs:/app/logs
+    networks:
+      - backend_network
     restart: unless-stopped
 
   # MySQL Database
@@ -60,6 +68,8 @@ services:
       - MYSQL_DATABASE=inspire
       - MYSQL_USER=app_user
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+    networks:
+      - backend_network
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password --max-allowed-packet=67108864
 
@@ -70,6 +80,8 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - backend_network
     restart: unless-stopped
 
   # Milvus Vector Database
@@ -85,6 +97,8 @@ services:
     depends_on:
       - etcd
       - minio
+    networks:
+      - backend_network
     restart: unless-stopped
 
   # Milvus Dependencies - etcd
@@ -96,6 +110,8 @@ services:
     volumes:
       - etcd_data:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    networks:
+      - backend_network
     restart: unless-stopped
 
   # Milvus Dependencies - MinIO
@@ -107,6 +123,8 @@ services:
     volumes:
       - minio_data:/data
     command: minio server /data --console-address ":9001"
+    networks:
+      - backend_network
     restart: unless-stopped
 
   # Ollama LLM Service
@@ -124,6 +142,8 @@ services:
         sleep 10
         ollama pull llama3.1:latest || true
         wait
+    networks:
+      - backend_network
     restart: unless-stopped
 
   # Nginx (Reverse Proxy + Frontend)
@@ -139,6 +159,8 @@ services:
       - ./certbot_www:/var/www/certbot
     depends_on:
       - app
+    networks:
+      - backend_network
     restart: unless-stopped
 
 volumes:
