@@ -788,10 +788,16 @@ class RAGAnalysisService:
                                 original_level = milvus_logger.level
                                 milvus_logger.setLevel(logging.CRITICAL)
                                 try:
-                                    collection_exists = utility.has_collection(collection_name)
+                                    # Wrap has_collection in the most defensive way possible
+                                    try:
+                                        collection_exists = utility.has_collection(collection_name)
+                                    except BaseException as inner_exc:
+                                        # Catch absolutely everything, including KeyboardInterrupt, SystemExit, etc.
+                                        logger.error(f"❌ CRITICAL: has_collection raised {type(inner_exc).__name__}: {inner_exc}")
+                                        raise  # Re-raise to be caught by outer handler
                                 finally:
                                     milvus_logger.setLevel(original_level)
-                            except Exception as check_exc:
+                            except BaseException as check_exc:
                                 # Catch ANY exception, not just MilvusException
                                 # This includes MilvusException from pymilvus
                                 logger.warning(f"⚠️ Error checking Milvus collection existence: {type(check_exc).__name__}: {check_exc}")
@@ -841,16 +847,20 @@ class RAGAnalysisService:
                 except Exception as exc:
                     logger.warning(f"⚠️ Failed to load in-memory vectors: {exc}. Regenerating vectors.")
                     vector_cache_entry = None
-        except Exception as outer_exc:
-            # Catch any exception from the entire vector cache lookup
+        except BaseException as outer_exc:
+            # Catch ANY exception from the entire vector cache lookup (including SystemExit, KeyboardInterrupt, etc.)
             # This is a safety net to ensure we don't crash if anything goes wrong
             logger.error(f"❌ Error during vector cache lookup: {type(outer_exc).__name__}: {outer_exc}")
+            logger.error(f"❌ Exception details: {repr(outer_exc)}")
             # Disable Milvus and clear cache entry
             self.milvus_available = False
             self.collection = None
             vector_cache_entry = None
             logger.info("ℹ️ Milvus disabled due to vector cache lookup error, will use in-memory storage")
             # Continue without Milvus - don't re-raise
+            # Only re-raise if it's a critical exception that shouldn't be caught
+            if isinstance(outer_exc, (SystemExit, KeyboardInterrupt)):
+                raise
         
         all_chunks: List[Dict[str, Any]] = []
         if not vector_store_reused:
