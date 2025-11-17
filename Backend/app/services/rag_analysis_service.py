@@ -791,6 +791,7 @@ class RAGAnalysisService:
                                 milvus_logger.setLevel(original_level)
                         except Exception as check_exc:
                             # Catch ANY exception, not just MilvusException
+                            # This includes MilvusException from pymilvus
                             logger.warning(f"⚠️ Error checking Milvus collection existence: {type(check_exc).__name__}: {check_exc}")
                             collection_exists = False
                             # Disable Milvus immediately to prevent further errors
@@ -798,6 +799,7 @@ class RAGAnalysisService:
                             self.collection = None
                             vector_cache_entry = None
                             logger.info("ℹ️ Milvus disabled due to collection check error, will use in-memory storage")
+                            # Don't re-raise - just continue without Milvus
                         
                         if collection_exists:
                             try:
