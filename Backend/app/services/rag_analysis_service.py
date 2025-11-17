@@ -808,7 +808,7 @@ class RAGAnalysisService:
                                 vector_cache_entry = None
                                 logger.info("ℹ️ Milvus disabled due to collection check error, will use in-memory storage")
                                 # Don't re-raise - just continue without Milvus
-                        
+                            
                             if collection_exists:
                                 try:
                                     self.collection = Collection(name=collection_name)
