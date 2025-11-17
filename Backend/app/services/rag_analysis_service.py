@@ -771,35 +771,37 @@ class RAGAnalysisService:
         chunk_count = 0
         collection_name = None
         
-        if vector_cache_entry:
-            if self.milvus_available and vector_cache_entry.get('vector_storage') == 'milvus':
-                try:
-                    collection_name = vector_cache_entry.get('collection_name')
-                    if collection_name:
-                        # Check if collection exists with proper error handling
-                        # If ANY error occurs, disable Milvus and use in-memory storage
-                        collection_exists = False
-                        try:
-                            # Suppress pymilvus error logging temporarily
-                            import logging
-                            milvus_logger = logging.getLogger('pymilvus')
-                            original_level = milvus_logger.level
-                            milvus_logger.setLevel(logging.CRITICAL)
-                            try:
-                                collection_exists = utility.has_collection(collection_name)
-                            finally:
-                                milvus_logger.setLevel(original_level)
-                        except Exception as check_exc:
-                            # Catch ANY exception, not just MilvusException
-                            # This includes MilvusException from pymilvus
-                            logger.warning(f"⚠️ Error checking Milvus collection existence: {type(check_exc).__name__}: {check_exc}")
+        # Wrap the entire vector cache lookup in a try-except to catch any Milvus errors
+        try:
+            if vector_cache_entry:
+                if self.milvus_available and vector_cache_entry.get('vector_storage') == 'milvus':
+                    try:
+                        collection_name = vector_cache_entry.get('collection_name')
+                        if collection_name:
+                            # Check if collection exists with proper error handling
+                            # If ANY error occurs, disable Milvus and use in-memory storage
                             collection_exists = False
-                            # Disable Milvus immediately to prevent further errors
-                            self.milvus_available = False
-                            self.collection = None
-                            vector_cache_entry = None
-                            logger.info("ℹ️ Milvus disabled due to collection check error, will use in-memory storage")
-                            # Don't re-raise - just continue without Milvus
+                            try:
+                                # Suppress pymilvus error logging temporarily
+                                import logging
+                                milvus_logger = logging.getLogger('pymilvus')
+                                original_level = milvus_logger.level
+                                milvus_logger.setLevel(logging.CRITICAL)
+                                try:
+                                    collection_exists = utility.has_collection(collection_name)
+                                finally:
+                                    milvus_logger.setLevel(original_level)
+                            except Exception as check_exc:
+                                # Catch ANY exception, not just MilvusException
+                                # This includes MilvusException from pymilvus
+                                logger.warning(f"⚠️ Error checking Milvus collection existence: {type(check_exc).__name__}: {check_exc}")
+                                collection_exists = False
+                                # Disable Milvus immediately to prevent further errors
+                                self.milvus_available = False
+                                self.collection = None
+                                vector_cache_entry = None
+                                logger.info("ℹ️ Milvus disabled due to collection check error, will use in-memory storage")
+                                # Don't re-raise - just continue without Milvus
                         
                         if collection_exists:
                             try:
@@ -832,15 +834,23 @@ class RAGAnalysisService:
                 try:
                     self.in_memory_chunks = copy.deepcopy(vector_cache_entry['chunks'])
                     self.in_memory_embeddings = vector_cache_entry['embeddings'].copy()
-                    chunk_count = vector_cache_entry.get('chunk_count', 0)
+                    chunk_count = len(self.in_memory_chunks)
                     vector_storage_used = 'in-memory'
                     vector_store_reused = True
-                    logger.info(f"♻️ Reusing in-memory vector store ({chunk_count} chunks)")
+                    logger.info(f"♻️ Reusing in-memory vectors ({chunk_count} chunks)")
                 except Exception as exc:
+                    logger.warning(f"⚠️ Failed to load in-memory vectors: {exc}. Regenerating vectors.")
                     vector_cache_entry = None
-                    self.in_memory_chunks = []
-                    self.in_memory_embeddings = None
-                    logger.warning(f"⚠️ Failed to reuse in-memory vectors: {exc}. Regenerating vectors.")
+        except Exception as outer_exc:
+            # Catch any exception from the entire vector cache lookup
+            # This is a safety net to ensure we don't crash if anything goes wrong
+            logger.error(f"❌ Error during vector cache lookup: {type(outer_exc).__name__}: {outer_exc}")
+            # Disable Milvus and clear cache entry
+            self.milvus_available = False
+            self.collection = None
+            vector_cache_entry = None
+            logger.info("ℹ️ Milvus disabled due to vector cache lookup error, will use in-memory storage")
+            # Continue without Milvus - don't re-raise
         
         all_chunks: List[Dict[str, Any]] = []
         if not vector_store_reused:
