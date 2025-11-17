@@ -735,16 +735,27 @@ class RAGAnalysisService:
             if self.milvus_available and vector_cache_entry.get('vector_storage') == 'milvus':
                 try:
                     collection_name = vector_cache_entry.get('collection_name')
-                    if collection_name and utility.has_collection(collection_name):
-                        self.collection = Collection(name=collection_name)
-                        self.collection.load()
-                        chunk_count = vector_cache_entry.get('chunk_count', 0)
-                        vector_storage_used = 'milvus'
-                        vector_store_reused = True
-                        logger.info(f"♻️ Reusing Milvus collection '{collection_name}' ({chunk_count} chunks)")
+                    if collection_name:
+                        # Check if collection exists with proper error handling
+                        try:
+                            collection_exists = utility.has_collection(collection_name)
+                        except Exception as check_exc:
+                            logger.warning(f"⚠️ Error checking Milvus collection existence: {check_exc}")
+                            collection_exists = False
+                        
+                        if collection_exists:
+                            self.collection = Collection(name=collection_name)
+                            self.collection.load()
+                            chunk_count = vector_cache_entry.get('chunk_count', 0)
+                            vector_storage_used = 'milvus'
+                            vector_store_reused = True
+                            logger.info(f"♻️ Reusing Milvus collection '{collection_name}' ({chunk_count} chunks)")
+                        else:
+                            vector_cache_entry = None
+                            logger.info(f"ℹ️ Milvus collection '{collection_name}' not found; regenerating vectors.")
                     else:
                         vector_cache_entry = None
-                        logger.info("ℹ️ Milvus collection not found or unavailable; regenerating vectors.")
+                        logger.info("ℹ️ No collection name in cache; regenerating vectors.")
                 except Exception as exc:
                     vector_cache_entry = None
                     self.collection = None
