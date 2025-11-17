@@ -48,15 +48,17 @@ else
 fi
 echo ""
 
-# Step 3: Restart Nginx
-echo "=== Step 3: Restarting Nginx ==="
+# Step 3: Start/Restart Nginx
+echo "=== Step 3: Starting/Restarting Nginx ==="
 cd ../Backend
-docker-compose restart nginx
+
+# Use up -d instead of restart (works even if container doesn't exist)
+docker-compose up -d nginx
 
 if [ $? -eq 0 ]; then
-    echo "✅ Nginx restarted successfully"
+    echo "✅ Nginx started/restarted successfully"
 else
-    echo "❌ Failed to restart Nginx"
+    echo "❌ Failed to start Nginx"
     exit 1
 fi
 echo ""
