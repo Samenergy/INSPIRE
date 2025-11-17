@@ -203,6 +203,7 @@ app = FastAPI(
 origins = [
     "https://inspire.software",
     "https://www.inspire.software",
+    "https://api.inspire.software",  # Allow API subdomain for internal requests
     "https://inspire-eight-rho.vercel.app",
     "http://localhost",
     "http://localhost:8000",
