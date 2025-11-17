@@ -777,10 +777,21 @@ class RAGAnalysisService:
                     collection_name = vector_cache_entry.get('collection_name')
                     if collection_name:
                         # Check if collection exists with proper error handling
+                        # Wrap in a more defensive try-except to catch any Milvus errors
+                        collection_exists = False
                         try:
-                            collection_exists = utility.has_collection(collection_name)
-                        except (MilvusException, Exception) as check_exc:
-                            logger.warning(f"⚠️ Error checking Milvus collection existence: {check_exc}")
+                            # Suppress pymilvus error logging temporarily
+                            import logging
+                            milvus_logger = logging.getLogger('pymilvus')
+                            original_level = milvus_logger.level
+                            milvus_logger.setLevel(logging.CRITICAL)
+                            try:
+                                collection_exists = utility.has_collection(collection_name)
+                            finally:
+                                milvus_logger.setLevel(original_level)
+                        except Exception as check_exc:
+                            # Catch ANY exception, not just MilvusException
+                            logger.warning(f"⚠️ Error checking Milvus collection existence: {type(check_exc).__name__}: {check_exc}")
                             collection_exists = False
                         
                         if collection_exists:
