@@ -809,33 +809,34 @@ class RAGAnalysisService:
                                 logger.info("ℹ️ Milvus disabled due to collection check error, will use in-memory storage")
                                 # Don't re-raise - just continue without Milvus
                         
-                        if collection_exists:
-                            try:
-                                self.collection = Collection(name=collection_name)
-                                self.collection.load()
-                                chunk_count = vector_cache_entry.get('chunk_count', 0)
-                                vector_storage_used = 'milvus'
-                                vector_store_reused = True
-                                logger.info(f"♻️ Reusing Milvus collection '{collection_name}' ({chunk_count} chunks)")
-                            except (MilvusException, Exception) as load_exc:
-                                logger.warning(f"⚠️ Failed to load Milvus collection '{collection_name}': {load_exc}. Regenerating vectors.")
+                            if collection_exists:
+                                try:
+                                    self.collection = Collection(name=collection_name)
+                                    self.collection.load()
+                                    chunk_count = vector_cache_entry.get('chunk_count', 0)
+                                    vector_storage_used = 'milvus'
+                                    vector_store_reused = True
+                                    logger.info(f"♻️ Reusing Milvus collection '{collection_name}' ({chunk_count} chunks)")
+                                except (MilvusException, Exception) as load_exc:
+                                    logger.warning(f"⚠️ Failed to load Milvus collection '{collection_name}': {load_exc}. Regenerating vectors.")
+                                    vector_cache_entry = None
+                                    self.collection = None
+                                    # Disable Milvus for this analysis session to avoid repeated failures
+                                    self.milvus_available = False
+                                    logger.info("ℹ️ Milvus disabled for this analysis, using in-memory storage")
+                            else:
                                 vector_cache_entry = None
-                                self.collection = None
-                                # Disable Milvus for this analysis session to avoid repeated failures
-                                self.milvus_available = False
-                                logger.info("ℹ️ Milvus disabled for this analysis, using in-memory storage")
+                                logger.info(f"ℹ️ Milvus collection '{collection_name}' not found; regenerating vectors.")
                         else:
+                            # No collection_name in cache entry
                             vector_cache_entry = None
-                            logger.info(f"ℹ️ Milvus collection '{collection_name}' not found; regenerating vectors.")
-                    else:
+                            logger.info("ℹ️ No collection name in cache; regenerating vectors.")
+                    except (MilvusException, Exception) as exc:
                         vector_cache_entry = None
-                        logger.info("ℹ️ No collection name in cache; regenerating vectors.")
-                except (MilvusException, Exception) as exc:
-                    vector_cache_entry = None
-                    self.collection = None
-                    # Disable Milvus for this analysis session
-                    self.milvus_available = False
-                    logger.warning(f"⚠️ Failed to reuse Milvus collection: {exc}. Regenerating vectors with in-memory storage.")
+                        self.collection = None
+                        # Disable Milvus for this analysis session
+                        self.milvus_available = False
+                        logger.warning(f"⚠️ Failed to reuse Milvus collection: {exc}. Regenerating vectors with in-memory storage.")
             elif not self.milvus_available and vector_cache_entry.get('vector_storage') == 'memory':
                 try:
                     self.in_memory_chunks = copy.deepcopy(vector_cache_entry['chunks'])
