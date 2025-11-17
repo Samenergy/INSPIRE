@@ -471,16 +471,26 @@ def run_unified_analysis(
                 extra={"stage": "rag_analysis", "category_num": 0, "total_categories": 10},
             )
             
-            rag_results = rag_service.analyze_comprehensive(
-                articles=articles_for_analysis,
-                company_name=company_name,
-                sme_objective=sme_objective,
-                progress_callback=rag_progress_callback
-            )
-            
-            # Extract the analysis results
-            analysis_results = rag_results['analysis']
-            rag_metadata = rag_results['metadata']
+            try:
+                rag_results = rag_service.analyze_comprehensive(
+                    articles=articles_for_analysis,
+                    company_name=company_name,
+                    sme_objective=sme_objective,
+                    progress_callback=rag_progress_callback
+                )
+                
+                # Extract the analysis results
+                analysis_results = rag_results['analysis']
+                rag_metadata = rag_results['metadata']
+            except Exception as rag_exc:
+                # If RAG analysis fails due to Milvus or other issues, log and re-raise
+                # The outer exception handler will catch it and mark the task as failed
+                error_msg = str(rag_exc)
+                logger.error(f"[{task_id}] RAG analysis exception: {rag_exc}")
+                # Check if it's a Milvus error and suggest fallback
+                if "Milvus" in error_msg or "collection" in error_msg.lower():
+                    logger.warning(f"[{task_id}] Milvus error detected. The RAG service should have fallen back to in-memory storage, but analysis still failed.")
+                raise
             
             logger.info(f"[{task_id}] ✅ RAG analysis completed")
             logger.info(f"[{task_id}]    Items extracted: {rag_metadata['total_items_extracted']}")

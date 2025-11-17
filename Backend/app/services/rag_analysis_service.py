@@ -298,54 +298,60 @@ class RAGAnalysisService:
     
     def _store_vectors_milvus(self, chunks: List[Dict[str, Any]], collection_name: str):
         """Store chunks and embeddings in Milvus"""
-        # Check if collection exists with proper error handling
-        collection_exists = False
         try:
-            collection_exists = utility.has_collection(collection_name)
-        except (MilvusException, Exception) as check_exc:
-            logger.warning(f"⚠️ Error checking if Milvus collection exists: {check_exc}")
+            # Check if collection exists with proper error handling
             collection_exists = False
-        
-        if collection_exists:
             try:
-                existing_collection = Collection(name=collection_name)
-                existing_collection.release()
-                existing_collection.drop()
-                logger.info(f"♻️  Replacing existing Milvus collection: {collection_name}")
-            except Exception as exc:
-                logger.warning(f"⚠️ Failed to drop existing Milvus collection {collection_name}: {exc}")
-        
-        # Define schema
-        fields = [
-            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
-            FieldSchema(name="chunk_text", dtype=DataType.VARCHAR, max_length=2000),
-            FieldSchema(name="article_title", dtype=DataType.VARCHAR, max_length=500),
-            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim)
-        ]
-        schema = CollectionSchema(fields=fields, description="RAG company analysis")
-        
-        # Create collection
-        collection = Collection(name=collection_name, schema=schema)
-        
-        # Prepare data (ensure lengths don't exceed Milvus limits)
-        chunk_texts = [c['text'][:1800] for c in chunks]  # Max 2000, leave buffer
-        titles = [c['title'][:400] for c in chunks]  # Max 500, leave buffer
-        embeddings = [c['embedding'].tolist() for c in chunks]
-        
-        # Insert data
-        collection.insert([chunk_texts, titles, embeddings])
-        
-        # Create index
-        index_params = {
-            "metric_type": "COSINE",
-            "index_type": "IVF_FLAT",
-            "params": {"nlist": 128}
-        }
-        collection.create_index(field_name="embedding", index_params=index_params)
-        collection.load()
-        
-        self.collection = collection
-        logger.info(f"✅ Stored {len(chunks)} chunks in Milvus collection: {collection_name}")
+                collection_exists = utility.has_collection(collection_name)
+            except (MilvusException, Exception) as check_exc:
+                logger.warning(f"⚠️ Error checking if Milvus collection exists: {check_exc}")
+                collection_exists = False
+            
+            if collection_exists:
+                try:
+                    existing_collection = Collection(name=collection_name)
+                    existing_collection.release()
+                    existing_collection.drop()
+                    logger.info(f"♻️  Replacing existing Milvus collection: {collection_name}")
+                except Exception as exc:
+                    logger.warning(f"⚠️ Failed to drop existing Milvus collection {collection_name}: {exc}")
+            
+            # Define schema
+            fields = [
+                FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+                FieldSchema(name="chunk_text", dtype=DataType.VARCHAR, max_length=2000),
+                FieldSchema(name="article_title", dtype=DataType.VARCHAR, max_length=500),
+                FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim)
+            ]
+            schema = CollectionSchema(fields=fields, description="RAG company analysis")
+            
+            # Create collection
+            collection = Collection(name=collection_name, schema=schema)
+            
+            # Prepare data (ensure lengths don't exceed Milvus limits)
+            chunk_texts = [c['text'][:1800] for c in chunks]  # Max 2000, leave buffer
+            titles = [c['title'][:400] for c in chunks]  # Max 500, leave buffer
+            embeddings = [c['embedding'].tolist() for c in chunks]
+            
+            # Insert data
+            collection.insert([chunk_texts, titles, embeddings])
+            
+            # Create index
+            index_params = {
+                "metric_type": "COSINE",
+                "index_type": "IVF_FLAT",
+                "params": {"nlist": 128}
+            }
+            collection.create_index(field_name="embedding", index_params=index_params)
+            collection.load()
+            
+            self.collection = collection
+            logger.info(f"✅ Stored {len(chunks)} chunks in Milvus collection: {collection_name}")
+        except (MilvusException, Exception) as exc:
+            # If anything fails in Milvus operations, raise the exception
+            # so the caller can handle it (fallback to in-memory)
+            logger.error(f"❌ Failed to store vectors in Milvus: {exc}")
+            raise
     
     def _store_vectors_memory(self, chunks: List[Dict[str, Any]]):
         """Store chunks and embeddings in memory"""
