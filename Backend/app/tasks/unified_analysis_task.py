@@ -486,16 +486,37 @@ def run_unified_analysis(
                 # If RAG analysis fails due to Milvus or other issues, try to handle it gracefully
                 error_msg = str(rag_exc)
                 error_type = type(rag_exc).__name__
-                logger.error(f"[{task_id}] RAG analysis exception ({error_type}): {rag_exc}")
+                error_repr = repr(rag_exc)
                 
-                # Check if it's a Milvus error
-                if "Milvus" in error_msg or "collection" in error_msg.lower() or "MilvusException" in error_type:
+                logger.error(f"[{task_id}] RAG analysis exception ({error_type}): {rag_exc}")
+                logger.error(f"[{task_id}] Error message: {error_msg}")
+                logger.error(f"[{task_id}] Error repr: {error_repr}")
+                
+                # Check if it's a Milvus error - check multiple ways to be sure
+                is_milvus_error = (
+                    "Milvus" in error_msg or 
+                    "Milvus" in error_repr or
+                    "collection" in error_msg.lower() or 
+                    "MilvusException" in error_type or
+                    "MilvusException" in error_repr or
+                    "can't find collection" in error_msg.lower()
+                )
+                
+                if is_milvus_error:
                     logger.warning(f"[{task_id}] ⚠️ Milvus error detected. Attempting to disable Milvus and retry with in-memory storage...")
                     
                     # Try to disable Milvus and retry once with in-memory storage
                     try:
                         rag_service.milvus_available = False
                         rag_service.collection = None
+                        # Also clear any vector cache that might reference Milvus
+                        if hasattr(rag_service, 'vector_cache'):
+                            # Clear any Milvus-related cache entries
+                            for key in list(rag_service.vector_cache.keys()):
+                                entry = rag_service.vector_cache.get(key)
+                                if entry and entry.get('vector_storage') == 'milvus':
+                                    del rag_service.vector_cache[key]
+                        
                         logger.info(f"[{task_id}] Retrying RAG analysis with Milvus disabled (in-memory only)...")
                         
                         rag_results = rag_service.analyze_comprehensive(
@@ -515,6 +536,7 @@ def run_unified_analysis(
                         raise rag_exc  # Re-raise the original exception
                 else:
                     # For non-Milvus errors, just re-raise
+                    logger.warning(f"[{task_id}] Non-Milvus error detected, re-raising: {error_type}")
                     raise
             
             logger.info(f"[{task_id}] ✅ RAG analysis completed")
