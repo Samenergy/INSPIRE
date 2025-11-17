@@ -351,12 +351,12 @@ Format your response as JSON:
                 with requests.Session() as session:
                     api_url = f"{url}/api/generate"
                     logger.debug(f"Trying Ollama at: {api_url}")
-                    # Use longer timeout for LLM generation (120s like RAG service)
-                    # Match RAG service exactly: single timeout value
+                    # Use longer timeout for LLM generation (300s = 5 minutes)
+                    # Outreach generation can take longer, especially with long prompts
                     response = session.post(
                         api_url,
                         json=payload,
-                        timeout=120
+                        timeout=300
                     )
                     if response.status_code == 200:
                         logger.debug(f"✅ Successfully connected to Ollama at: {url}")
