@@ -12,6 +12,11 @@ services:
       - "8000:8000"
     environment:
       - MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/inspire
+      - DB_NAME=inspire
+      - DB_USER=app_user
+      - DB_PASSWORD=app_password
+      - DB_HOST=mysql
+      - DB_PORT=3306
       - REDIS_URL=redis://redis:6379/0
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
@@ -37,6 +42,11 @@ services:
     command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=5
     environment:
       - MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/inspire
+      - DB_NAME=inspire
+      - DB_USER=app_user
+      - DB_PASSWORD=app_password
+      - DB_HOST=mysql
+      - DB_PORT=3306
       - REDIS_URL=redis://redis:6379/0
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
