@@ -20,18 +20,15 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama3.1:latest
+      - LLM_MODEL_PATH=/app/models/Phi-3.5-mini-instruct-Q8_0.gguf
+      - LLM_N_CTX=4096
+      - LLM_N_THREADS=8
       - DEBUG=False
       - TORCH_DEVICE=cpu
       - PYTORCH_ENABLE_MPS_FALLBACK=1
-    depends_on:
-      - mysql
-      - redis
-      - milvus
-      - ollama
     volumes:
       - ./logs:/app/logs
+      - ./models:/app/models  # Mount GGUF model directory
     networks:
       - backend_network
     restart: unless-stopped
@@ -39,7 +36,7 @@ services:
   # Celery Worker for Background Tasks
   celery_worker:
     build: .
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=5
+    command: celery -A app.celery_app worker --pool=threads --loglevel=info --concurrency=4 --max-tasks-per-child=5
     environment:
       - MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/inspire
       - DB_NAME=inspire
@@ -50,8 +47,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama3.1:latest
+      - LLM_MODEL_PATH=/app/models/Phi-3.5-mini-instruct-Q8_0.gguf
+      - LLM_N_CTX=4096
+      - LLM_N_THREADS=8
       - DEBUG=False
       - TORCH_DEVICE=cpu
       - PYTORCH_ENABLE_MPS_FALLBACK=1
@@ -59,9 +57,9 @@ services:
       - mysql
       - redis
       - milvus
-      - ollama
     volumes:
       - ./logs:/app/logs
+      - ./models:/app/models  # Mount GGUF model directory
     networks:
       - backend_network
     restart: unless-stopped
@@ -138,25 +136,6 @@ services:
       - backend_network
     restart: unless-stopped
 
-  # Ollama LLM Service
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # Pull model on first start
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        ollama serve &
-        sleep 10
-        ollama pull llama3.1:latest || true
-        wait
-    networks:
-      - backend_network
-    restart: unless-stopped
-
   # Nginx (Reverse Proxy + Frontend)
   nginx:
     image: nginx:alpine
@@ -180,4 +159,3 @@ volumes:
   milvus_data:
   etcd_data:
   minio_data:
-  ollama_data:

@@ -20,7 +20,6 @@ import re
 import copy
 import hashlib
 import numpy as np
-import requests
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from collections import OrderedDict
@@ -97,8 +96,8 @@ class RAGAnalysisService:
         self,
         milvus_host: str = "localhost",
         milvus_port: str = "19530",
-        ollama_host: str = "http://localhost:11434",
-        llm_model: str = "llama3.1:latest"
+        ollama_host: str = None,  # Deprecated - kept for backward compatibility
+        llm_model: str = None  # Deprecated - kept for backward compatibility
     ):
         """Initialize RAG service"""
         logger.info("🚀 Initializing RAG Analysis Service...")
@@ -107,13 +106,14 @@ class RAGAnalysisService:
         self.milvus_host = milvus_host
         self.milvus_port = milvus_port
         
-        # Normalize Ollama URL - ensure it has protocol and proper format
-        self.ollama_host = ollama_host.rstrip('/')
-        if not self.ollama_host.startswith(('http://', 'https://')):
-            # If no protocol, assume http://
-            self.ollama_host = f'http://{self.ollama_host}'
+        # Initialize LLM service (llama.cpp with Phi-3.5 Mini)
+        from app.services.llm_service import get_llm_service
+        self.llm_service = get_llm_service()
         
-        self.llm_model = llm_model
+        if not self.llm_service.is_available():
+            logger.warning("⚠️ LLM service not available. RAG analysis will fail.")
+        else:
+            logger.info("✅ LLM service initialized (Phi-3.5 Mini via llama.cpp)")
         
         # Hyperparameters
         self.hyperparameters = {
@@ -121,7 +121,7 @@ class RAGAnalysisService:
             'chunk_overlap': 100,
             'top_k': 5,
             'temperature': 0.3,
-            'max_tokens': 1000,
+            'max_tokens': 800,  # Reduced from 1000 for faster inference (still sufficient for quality)
             'similarity_threshold': 0.1  # Lowered from 0.2 to allow more chunks through
         }
         
@@ -182,7 +182,7 @@ class RAGAnalysisService:
             company_name.strip().lower(),
             (sme_objective or '').strip().lower(),
             articles_signature,
-            self.llm_model,
+            "phi-3.5-mini",  # Model identifier for cache key
             self.hyperparameters['chunk_size'],
             self.hyperparameters['chunk_overlap'],
             self.hyperparameters['top_k'],
@@ -444,71 +444,28 @@ class RAGAnalysisService:
         return chunks
     
     def _call_llm(self, prompt: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> Optional[str]:
-        """Call Llama-3 via Ollama API with fallback for localhost/ollama hostname"""
+        """Call Phi-3.5 Mini via llama.cpp (direct inference, no HTTP overhead)"""
         temp = temperature if temperature is not None else self.hyperparameters['temperature']
         max_tok = max_tokens if max_tokens is not None else self.hyperparameters['max_tokens']
         
-        payload = {
-            "model": self.llm_model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": temp,
-                "num_predict": max_tok
-            }
-        }
+        # System message for RAG analysis
+        system_message = "You are a helpful assistant that extracts structured information from company articles. Always return valid JSON."
         
-        # Try multiple URLs in case of DNS/hostname issues
-        # First try the configured URL, then fallback to localhost or ollama
-        urls_to_try = [self.ollama_host]
+        # Use LLM service for direct inference
+        generated_text = self.llm_service.generate(
+            prompt=prompt,
+            system_message=system_message,
+            temperature=temp,
+            max_tokens=max_tok,
+            stop=["<|end|>", "</s>", "\n\n\n"]
+        )
         
-        # Extract hostname and port to build fallback URLs
-        url_match = re.match(r'(https?://)([^:/]+)(:\d+)?(/.*)?$', self.ollama_host)
-        if url_match:
-            protocol, hostname, port, path = url_match.groups()
-            port = port or ':11434'  # Default Ollama port
-            path = path or ''
-            
-            # If configured URL uses 'ollama' hostname (Docker), also try 'localhost'
-            if 'ollama' in hostname and 'localhost' not in hostname:
-                localhost_url = f"{protocol}localhost{port}{path}"
-                urls_to_try.append(localhost_url)
-            # If configured URL uses 'localhost', also try 'ollama' (for Docker)
-            elif 'localhost' in hostname and 'ollama' not in hostname:
-                ollama_url = f"{protocol}ollama{port}{path}"
-                urls_to_try.append(ollama_url)
-        
-        # Try each URL until one works
-        last_error = None
-        for url in urls_to_try:
-            try:
-                # Use a session for connection pooling and proper cleanup
-                with requests.Session() as session:
-                    api_url = f"{url}/api/generate"
-                    logger.debug(f"Trying Ollama at: {api_url}")
-                    response = session.post(
-                        api_url,
-                        json=payload,
-                        timeout=120
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        generated_text = result.get('response', '')
-                        logger.debug(f"✅ Successfully connected to Ollama at: {url}")
-                        return generated_text
-                    else:
-                        logger.warning(f"LLM API error at {url}: {response.status_code}")
-                        last_error = Exception(f"HTTP {response.status_code}")
-            
-            except Exception as e:
-                logger.debug(f"Failed to connect to Ollama at {url}: {e}")
-                last_error = e
-                continue
-        
-        # All URLs failed
-        logger.error(f"LLM call failed for all URLs: {last_error}")
-        return None
+        if generated_text:
+            logger.debug(f"✅ LLM generated {len(generated_text)} characters")
+            return generated_text
+        else:
+            logger.error("LLM returned empty response")
+            return None
     
     def _parse_json_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Robustly parse JSON from LLM response"""
@@ -932,7 +889,9 @@ class RAGAnalysisService:
         else:
             logger.info("✅ Vector store reused successfully; skipping chunking and embedding regeneration.")
         
-        # Step 4: Extract all 10 categories
+        # Step 4: Extract all 10 categories sequentially
+        # Note: llama.cpp inference is serialized with a lock, so parallel extraction
+        # doesn't provide speedup. Sequential is simpler and more predictable.
         categories = self._get_category_configs(company_name, sme_objective)
         
         results = {}

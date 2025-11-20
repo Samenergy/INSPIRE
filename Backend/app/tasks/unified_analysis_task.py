@@ -109,6 +109,36 @@ def run_unified_analysis(
     """
     Celery task that runs the complete unified analysis pipeline.
     
+    Fork-safe: Resets asyncio state and initializes models fresh in each worker process.
+    """
+    # Reset asyncio state for fork safety (important for Celery fork pool)
+    # This prevents "Event loop is closed" errors when Celery forks worker processes
+    import asyncio
+    try:
+        # Try to get current event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # If we get here, loop is running - don't close it
+        except RuntimeError:
+            # No running loop, try to get event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    # Loop is closed, create new one
+                    asyncio.set_event_loop(asyncio.new_event_loop())
+            except RuntimeError:
+                # No event loop exists, create new one
+                asyncio.set_event_loop(asyncio.new_event_loop())
+    except Exception as e:
+        # If anything fails, just create a new event loop
+        logger.debug(f"Resetting asyncio event loop: {e}")
+        try:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+        except Exception:
+            pass  # Ignore if we can't set event loop
+    """
+    Celery task that runs the complete unified analysis pipeline.
+    
     This task:
     1. Initializes models INSIDE the task (not globally) to avoid memory leaks
     2. Uses CPU-only mode for PyTorch to prevent SIGSEGV crashes
@@ -435,8 +465,8 @@ def run_unified_analysis(
             rag_service = RAGAnalysisService(
                 milvus_host=settings.milvus_host,
                 milvus_port=settings.milvus_port,
-                ollama_host=settings.ollama_base_url,
-                llm_model=settings.ollama_model
+                ollama_host=None,  # Deprecated - using llama.cpp now
+                llm_model=None  # Deprecated - using llama.cpp now
             )
             
             # Define progress callback for RAG analysis (75% to 90% = 15% range, 10 categories = 1.5% each)

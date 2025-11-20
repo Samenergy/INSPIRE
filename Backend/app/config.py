@@ -69,9 +69,26 @@ class Settings(BaseSettings):
     milvus_host: str = Field(default="localhost", env="MILVUS_HOST")
     milvus_port: str = Field(default="19530", env="MILVUS_PORT")
     
-    # Ollama / LLM Configuration
-    ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
-    ollama_model: str = Field(default="llama3.1:8b-instruct-q4_K_M", env="OLLAMA_MODEL")
+    # LLM Configuration (llama.cpp with Phi-3.5 Mini)
+    llm_model_path: str = Field(
+        default="models/Phi-3.5-mini-instruct-Q8_0.gguf",
+        env="LLM_MODEL_PATH",
+        description="Path to Phi-3.5 Mini GGUF model file"
+    )
+    llm_n_ctx: int = Field(
+        default=4096,
+        env="LLM_N_CTX",
+        description="Context window size (4096 or larger, Phi-3.5 supports up to 128K)"
+    )
+    llm_n_threads: int = Field(
+        default=8,
+        env="LLM_N_THREADS",
+        description="Number of CPU threads for inference (use 'nproc' to check available cores)"
+    )
+    
+    # Legacy Ollama settings (deprecated - kept for backward compatibility during migration)
+    ollama_base_url: Optional[str] = Field(default=None, env="OLLAMA_BASE_URL")
+    ollama_model: Optional[str] = Field(default=None, env="OLLAMA_MODEL")
     
     # RAG Hyperparameters
     rag_temperature: float = Field(default=0.3, env="RAG_TEMPERATURE")

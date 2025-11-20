@@ -380,7 +380,7 @@ async def unified_analysis_info():
             "classification": "SentenceTransformer + Custom Model",
             "rag_embeddings": "all-MiniLM-L6-v2 (384-dim)",
             "vector_storage": "Milvus (with in-memory fallback)",
-            "llm": "Llama 3.1 via Ollama",
+            "llm": "Phi-3.5 Mini 3.8B via llama.cpp",
             "retrieval": "Cosine similarity (top-5)",
             "background_processing": "Celery",
             "progress_tracking": "Redis",

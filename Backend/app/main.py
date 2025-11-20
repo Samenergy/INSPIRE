@@ -4,7 +4,6 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 import subprocess
-import requests
 import time
 import socket
 
@@ -30,54 +29,27 @@ def is_port_open(host: str, port: int) -> bool:
     except:
         return False
 
-def start_ollama():
-    """Start Ollama service if not running"""
-    print("🔍 Checking Ollama status...")
-    
-    # Check if Ollama is running
-    if is_port_open('localhost', 11434):
-        print("✅ Ollama is already running on port 11434")
-        return True
-    
-    print("🚀 Starting Ollama service...")
+def check_llm_service():
+    """Check if LLM service (llama.cpp) is available"""
+    print("🔍 Checking LLM service status...")
     try:
-        # Start Ollama in background
-        subprocess.Popen(
-            ['ollama', 'serve'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
-        )
+        from app.services.llm_service import get_llm_service
+        llm_service = get_llm_service()
         
-        # Wait for Ollama to start (max 10 seconds)
-        for i in range(10):
-            time.sleep(1)
-            if is_port_open('localhost', 11434):
-                print("✅ Ollama started successfully on port 11434")
-                
-                # Check if llama3.1 model is available
-                try:
-                    response = requests.get('http://localhost:11434/api/tags', timeout=5)
-                    if response.status_code == 200:
-                        models = response.json().get('models', [])
-                        llama_models = [m for m in models if 'llama3.1' in str(m.get('name', '')).lower()]
-                        if llama_models:
-                            print(f"✅ Llama 3.1 model is available: {llama_models[0]['name']}")
-                        else:
-                            print("⚠️  Llama 3.1 model not found. Run: ollama pull llama3.1")
-                except Exception as e:
-                    print(f"⚠️  Could not verify Llama models: {e}")
-                
-                return True
-        
-        print("⚠️  Ollama started but not responding on port 11434")
-        return False
-        
-    except FileNotFoundError:
-        print("❌ Ollama not installed. Install with: curl -fsSL https://ollama.com/install.sh | sh")
-        return False
+        if llm_service.is_available():
+            model_info = llm_service.get_model_info()
+            print(f"✅ LLM service available: {model_info.get('model_type', 'Unknown')}")
+            print(f"   Model path: {model_info.get('model_path', 'Unknown')}")
+            print(f"   Context window: {model_info.get('context_window', 'Unknown')}")
+            print(f"   CPU threads: {model_info.get('cpu_threads', 'Unknown')}")
+            return True
+        else:
+            print("⚠️  LLM service not available")
+            print("   Please ensure Phi-3.5 Mini model is downloaded to models/ directory")
+            print("   Download from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF")
+            return False
     except Exception as e:
-        print(f"❌ Failed to start Ollama: {e}")
+        print(f"⚠️  Could not check LLM service: {e}")
         return False
 
 def start_milvus():
@@ -176,8 +148,8 @@ async def lifespan(app: FastAPI):
         print(f"⚠️  Database initialization error: {e}")
         print("   Continuing startup - database may need manual initialization")
     
-    # Start Ollama (required for RAG and LLM analysis)
-    start_ollama()
+    # Check LLM service (llama.cpp with Phi-3.5 Mini)
+    check_llm_service()
     
     # Start Milvus (optional for RAG - has in-memory fallback)
     start_milvus()
@@ -207,7 +179,7 @@ origins = [
     "https://inspire-eight-rho.vercel.app",
     "http://localhost",
     "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    "https://api.inspire.software",
     "http://localhost:3000",
     "http://0.0.0.0:8000",
     "http://0.0.0.0:3000",

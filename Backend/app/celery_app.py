@@ -67,12 +67,15 @@ celery_app.conf.update(
     task_time_limit=1800,  # 30 minutes max per task
     task_soft_time_limit=1500,  # 25 minutes soft limit
     worker_prefetch_multiplier=1,  # Process one task at a time to avoid memory issues
-    worker_max_tasks_per_child=5,  # Restart worker after 5 tasks to prevent memory leaks
+    worker_max_tasks_per_child=5,  # Restart worker after 5 tasks to prevent memory leaks (not used with threads pool)
     task_acks_late=True,  # Acknowledge tasks after completion
     task_reject_on_worker_lost=True,  # Reject tasks if worker dies
     result_expires=3600,  # Results expire after 1 hour
     task_max_retries=3,  # Max 3 retries to prevent infinite loops
     task_default_retry_delay=60,  # Wait 60 seconds between retries
+    # Use threads pool instead of fork pool to avoid SIGSEGV with llama.cpp
+    # llama.cpp doesn't handle fork() well - causes segmentation faults
+    worker_pool='threads',  # Required for llama.cpp compatibility
 )
 
 # Set CPU-only mode for PyTorch to avoid SIGSEGV crashes

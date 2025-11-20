@@ -43,5 +43,7 @@ pymilvus==2.3.4  # Vector database (optional, has in-memory fallback)
 # Dependency pin for environs / pymilvus
 marshmallow>=3.13.0
 environs==9.5.0
-# Note: Ollama must be installed separately: curl -fsSL https://ollama.com/install.sh | sh
+# LLM Inference (llama.cpp with Phi-3.5 Mini)
+llama-cpp-python>=0.2.0
+# For CPU-optimized builds, use: pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 

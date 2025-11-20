@@ -6,3 +6,9 @@ node_modules
 .env.production.local
 .node_modules
 
+
+# LLM Model files (too large for git)
+Backend/models/*.gguf
+Backend/models/*.ggml
+*.gguf
+*.ggml

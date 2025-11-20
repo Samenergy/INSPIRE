@@ -7,23 +7,22 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
-import os
 import re
 import asyncio
-import requests
 from ..models import OutreachType
 
 logger = logging.getLogger(__name__)
 
 class OutreachService:
     def __init__(self):
-        ollama_url = os.getenv('OLLAMA_BASE_URL') or os.getenv('OLLAMA_URL', 'http://localhost:11434')
-        # Ensure URL doesn't have trailing slash and is properly formatted
-        self.ollama_url = ollama_url.rstrip('/')
-        if not self.ollama_url.startswith(('http://', 'https://')):
-            self.ollama_url = f'http://{self.ollama_url}'
+        # Initialize LLM service (llama.cpp with Phi-3.5 Mini)
+        from app.services.llm_service import get_llm_service
+        self.llm_service = get_llm_service()
         
-        logger.info(f"OutreachService initialized with Ollama URL: {self.ollama_url}")
+        if not self.llm_service.is_available():
+            logger.warning("⚠️ LLM service not available. Outreach generation will fail.")
+        else:
+            logger.info("✅ OutreachService initialized with Phi-3.5 Mini (llama.cpp)")
         
     async def generate_outreach_content(
         self,
@@ -119,12 +118,12 @@ COMPANY INFORMATION:
                     if opp_texts:
                         company_context += "- Growth Opportunities:\n" + "\n".join(opp_texts) + "\n"
         
-        # SME information
-        sme_context = f"""
-SME INFORMATION:
+        # Our organization information
+        our_org_context = f"""
+OUR ORGANIZATION INFORMATION:
 - Name: {sme_info.get('name', 'Unknown')}
 - Sector: {sme_info.get('sector', 'Unknown')}
-- Objectives: {sme_info.get('objective', 'No specific objectives provided')}
+- Capabilities and Objectives: {sme_info.get('objective', 'Partnership and collaboration focused')}
 """
         
         # RAG Analysis Intelligence (if available)
@@ -179,7 +178,7 @@ SME INFORMATION:
                     if plan_text:
                         rag_context += f"  • {plan_text}\n"
             
-            # Action Plan (SME-specific engagement steps)
+            # Action Plan (recommended engagement steps for partnership)
             if rag_analysis.get('action_plan') and rag_analysis['action_plan'].get('data', {}).get('action_steps'):
                 action_steps = rag_analysis['action_plan']['data']['action_steps']
                 rag_context += "\n- Recommended Engagement Steps:\n"
@@ -191,10 +190,10 @@ SME INFORMATION:
                         if rationale:
                             rag_context += f"    Rationale: {rationale[:100]}...\n"
             
-            # Solutions (SME solutions that address company needs)
+            # Solutions (collaboration opportunities that address company needs)
             if rag_analysis.get('solutions') and rag_analysis['solutions'].get('data', {}).get('solutions'):
                 solutions = rag_analysis['solutions']['data']['solutions']
-                rag_context += "\n- Relevant SME Solutions:\n"
+                rag_context += "\n- Relevant Collaboration Opportunities:\n"
                 for solution in solutions[:3]:
                     solution_text = solution.get('solution', '') if isinstance(solution, dict) else str(solution)
                     value_prop = solution.get('value_proposition', '') if isinstance(solution, dict) else ''
@@ -217,12 +216,12 @@ SME INFORMATION:
         else:
             articles_context += "No recent articles available.\n"
         
-        return f"{company_context}\n{sme_context}{rag_context}\n{articles_context}"
+        return f"{company_context}\n{our_org_context}{rag_context}\n{articles_context}"
     
     async def _generate_email_content(self, context: str) -> Dict[str, str]:
         """Generate email outreach content."""
         prompt = f"""
-Based on the following comprehensive intelligence about the company and SME objectives, create a highly personalized and professional email outreach for business partnership or collaboration opportunities.
+Based on the following comprehensive intelligence about the company, create a highly personalized and professional email outreach for strategic partnership and collaboration opportunities.
 
 {context}
 
@@ -230,22 +229,34 @@ Please generate:
 1. A compelling, personalized email subject line (under 60 characters)
 2. A professional email body that:
    - Opens with a personalized greeting referencing a specific company update or development
-   - Introduces the SME and their capabilities relevant to the company's current priorities
-   - References specific recent company developments, challenges, or future plans from the intelligence
-   - Highlights relevant SME solutions that address the company's current needs (if available)
-   - References the recommended engagement steps (if available in the intelligence)
-   - Proposes specific collaboration opportunities based on the company's strengths and opportunities
-   - Mentions key decision makers if available (to demonstrate research)
-   - Includes a clear, action-oriented call-to-action
-   - Maintains a professional but engaging, personalized tone
+   - Introduces our organization and capabilities relevant to the company's current priorities
+   - Demonstrates understanding of the company's recent developments, challenges, and growth trajectory
+   - Highlights specific collaboration opportunities that create mutual value
+   - Explains how both organizations can benefit from working together:
+     * What value we bring to support the company's current priorities and future plans
+     * How the company's strengths and opportunities align with our capabilities
+     * The mutual growth potential from this strategic partnership
+   - References key decision makers if available (to demonstrate research and respect)
+   - Emphasizes partnership, collaboration, and shared success rather than one-sided benefits
+   - Proposes concrete next steps for exploring collaboration
+   - Maintains a professional, respectful, and partnership-focused tone
    - Is concise (150-200 words)
-   - Shows genuine understanding of the company's business context
+   - Shows genuine understanding of the company's business context and growth aspirations
 
-Format your response as JSON:
+IMPORTANT NOTES:
+- Do NOT refer to either organization as "SME" or any diminutive term
+- Respect the company's position and reputation
+- Focus on strategic partnership and mutual benefits
+- Emphasize collaboration and shared growth opportunities
+
+IMPORTANT: You MUST respond with ONLY valid JSON, no additional text or explanations. Format your response as JSON:
+
 {{
     "title": "Email subject line here",
     "content": "Email body content here"
 }}
+
+Return ONLY the JSON object, nothing else.
 """
         
         return await self._call_llm(prompt, "email")
@@ -253,7 +264,7 @@ Format your response as JSON:
     async def _generate_call_content(self, context: str) -> Dict[str, str]:
         """Generate call script content."""
         prompt = f"""
-Based on the following comprehensive intelligence about the company and SME objectives, create a highly personalized call script for business outreach.
+Based on the following comprehensive intelligence about the company, create a highly personalized call script for strategic partnership outreach.
 
 {context}
 
@@ -261,19 +272,31 @@ Please generate:
 1. A brief call title/purpose (personalized to the company)
 2. A structured call script that includes:
    - Opening introduction (30 seconds) - personalized opener referencing a specific company update
-   - Company research talking points - reference latest updates, challenges, or future plans from intelligence
-   - Value proposition presentation - highlight relevant SME solutions that address company's current needs
-   - Decision maker engagement - mention key decision makers if available to show research
-   - Personalized questions to ask the prospect based on their challenges and opportunities
-   - Partnership opportunities discussion - reference company strengths and how SME can help
-   - Closing and next steps - use recommended engagement steps if available
-   - Objection handling tips - address common concerns based on company's market position
+   - Company research talking points - reference latest updates, challenges, growth plans from intelligence
+   - Collaboration opportunities presentation - highlight how both organizations can work together
+   - Mutual benefits discussion:
+     * How our capabilities support the company's current priorities and future growth
+     * How the company's strengths complement our offerings
+     * The growth potential for both organizations through partnership
+   - Decision maker engagement - mention key decision makers if available to show research and respect
+   - Personalized questions to explore collaboration opportunities based on company's challenges and growth plans
+   - Strategic partnership discussion - focus on how both parties can grow together
+   - Closing and next steps - propose concrete ways to explore collaboration
+   - Objection handling tips - address concerns with mutual benefit focus
 
-Format your response as JSON:
+IMPORTANT NOTES:
+- Do NOT refer to either organization as "SME" or any diminutive term
+- Respect the company's position and focus on partnership
+- Emphasize collaboration and mutual growth opportunities
+
+IMPORTANT: You MUST respond with ONLY valid JSON, no additional text or explanations. Format your response as JSON:
+
 {{
     "title": "Call purpose/title here",
     "content": "Structured call script here"
 }}
+
+Return ONLY the JSON object, nothing else.
 """
         
         return await self._call_llm(prompt, "call")
@@ -281,137 +304,97 @@ Format your response as JSON:
     async def _generate_meeting_content(self, context: str) -> Dict[str, str]:
         """Generate meeting agenda content."""
         prompt = f"""
-Based on the following comprehensive intelligence about the company and SME objectives, create a professional and strategic meeting agenda for business partnership discussion.
+Based on the following comprehensive intelligence about the company, create a professional and strategic meeting agenda for partnership and collaboration discussion.
 
 {context}
 
 Please generate:
-1. A personalized meeting title that reflects the partnership opportunity
+1. A personalized meeting title that reflects the strategic partnership opportunity
 2. A detailed meeting agenda that includes:
-   - Meeting objectives (specific to company's current priorities and challenges)
+   - Meeting objectives (focus on exploring mutual collaboration and growth opportunities)
    - Attendee recommendations (reference key decision makers if available)
    - Agenda items with time allocations:
-     * Company overview discussion (reference company strengths and opportunities)
-     * Recent developments review (latest updates and future plans)
-     * Challenge identification (discuss current challenges from intelligence)
-     * SME capabilities presentation (highlight relevant solutions from intelligence)
-     * Partnership opportunity exploration (based on engagement steps if available)
-     * Collaboration framework discussion
-   - Discussion points about recent company developments, challenges, and opportunities
-   - Partnership opportunity exploration based on company's future plans
-   - Action items and next steps (aligned with recommended engagement steps)
+     * Company overview discussion (reference company strengths, opportunities, and growth trajectory)
+     * Recent developments review (latest updates and future growth plans)
+     * Challenge and opportunity identification (discuss current priorities from intelligence)
+     * Our capabilities presentation (highlight how we can support the company's growth)
+     * Collaboration opportunities exploration:
+       - How both organizations can work together
+       - Mutual benefits and value creation
+       - Growth potential for both parties
+     * Partnership framework discussion (how to structure collaboration)
+   - Discussion points about:
+     * Recent company developments and growth initiatives
+     * Alignment between our capabilities and company's priorities
+     * Specific collaboration opportunities that create mutual value
+     * Growth potential for both organizations through partnership
+   - Action items and next steps (concrete ways to move forward together)
    - Meeting duration estimate (typically 60-90 minutes)
 
-Format your response as JSON:
+IMPORTANT NOTES:
+- Do NOT refer to either organization as "SME" or any diminutive term
+- Respect the company's position and emphasize partnership
+- Focus on collaboration, mutual benefits, and shared growth
+
+IMPORTANT: You MUST respond with ONLY valid JSON, no additional text or explanations. Format your response as JSON:
+
 {{
     "title": "Meeting title here",
     "content": "Detailed meeting agenda here"
 }}
+
+Return ONLY the JSON object, nothing else.
 """
         
         return await self._call_llm(prompt, "meeting")
     
     async def _call_llm(self, prompt: str, outreach_type: str) -> Dict[str, str]:
-        """Call Ollama LLM to generate content."""
+        """Call Phi-3.5 Mini via llama.cpp to generate content."""
         try:
-            payload = {
-                "model": "llama3.1:latest",
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                    "num_predict": 1000  # Ollama uses num_predict instead of max_tokens
-                }
-            }
+            # System message for outreach generation
+            system_message = f"""You are a professional business outreach assistant specializing in strategic partnerships. Generate personalized {outreach_type} content that emphasizes collaboration, mutual benefits, and shared growth opportunities. Always maintain respect for the company and never use diminutive terms like "SME". Always return valid JSON with 'title' and 'content' fields."""
             
-            # Try multiple URLs in case of DNS/hostname issues
-            # First try the configured URL, then fallback to localhost or ollama
-            urls_to_try = [self.ollama_url]
+            # Use LLM service for direct inference (run in thread pool for async compatibility)
+            def _generate():
+                return self.llm_service.generate(
+                    prompt=prompt,
+                    system_message=system_message,
+                    temperature=0.7,
+                    max_tokens=1000,
+                    stop=["<|end|>", "</s>", "\n\n\n"]
+                )
             
-            # Extract hostname and port to build fallback URLs (matching RAG service logic)
-            url_match = re.match(r'(https?://)([^:/]+)(:\d+)?(/.*)?$', self.ollama_url)
-            if url_match:
-                protocol, hostname, port, path = url_match.groups()
-                port = port or ':11434'  # Default Ollama port
-                path = path or ''
-                
-                # If configured URL uses 'ollama' hostname (Docker), also try 'localhost'
-                if 'ollama' in hostname and 'localhost' not in hostname:
-                    localhost_url = f"{protocol}localhost{port}{path}"
-                    urls_to_try.append(localhost_url)
-                # If configured URL uses 'localhost', also try 'ollama' (for Docker)
-                elif 'localhost' in hostname and 'ollama' not in hostname:
-                    ollama_url = f"{protocol}ollama{port}{path}"
-                    urls_to_try.append(ollama_url)
+            # Run in thread pool to avoid blocking
+            generated_text = await asyncio.to_thread(_generate)
             
-            # Use requests (synchronous) in a thread pool to avoid blocking
-            # This matches how RAG service connects to Ollama successfully
-            def _make_request(url):
-                with requests.Session() as session:
-                    api_url = f"{url}/api/generate"
-                    logger.debug(f"Trying Ollama at: {api_url}")
-                    # Use longer timeout for LLM generation (300s = 5 minutes)
-                    # Outreach generation can take longer, especially with long prompts
-                    response = session.post(
-                        api_url,
-                        json=payload,
-                        timeout=300
-                    )
-                    if response.status_code == 200:
-                        logger.debug(f"✅ Successfully connected to Ollama at: {url}")
-                        return response.json()
-                    else:
-                        error_text = response.text[:500] if response.text else "No error message"
-                        logger.error(f"Ollama returned status {response.status_code}: {error_text}")
-                        raise Exception(f"LLM API returned status {response.status_code}: {error_text}")
+            if not generated_text:
+                raise Exception("LLM returned empty response")
             
-            # Log the payload being sent (for debugging)
-            logger.debug(f"Ollama payload: model={payload['model']}, prompt_length={len(payload['prompt'])}, options={payload['options']}")
-            
-            # Try each URL until one works
-            last_error = None
-            generated_text = None
-            for url in urls_to_try:
-                try:
-                    logger.info(f"Calling Ollama at: {url}/api/generate")
-                    
-                    # Run the synchronous request in a thread pool
-                    result = await asyncio.to_thread(_make_request, url)
-                    generated_text = result.get('response', '')
-                    logger.info(f"✅ Successfully received response from Ollama (length: {len(generated_text)})")
-                    break  # Success, exit the loop
-                except requests.exceptions.ConnectTimeout as e:
-                    last_error = e
-                    logger.warning(f"Connection timeout to {url}, trying next URL...")
-                    continue
-                except requests.exceptions.ReadTimeout as e:
-                    last_error = e
-                    logger.warning(f"Read timeout from {url}, trying next URL...")
-                    continue
-                except requests.exceptions.ConnectionError as e:
-                    last_error = e
-                    logger.warning(f"Failed to connect to {url}, trying next URL...")
-                    continue
-                except Exception as e:
-                    last_error = e
-                    logger.warning(f"Error connecting to {url}: {e}, trying next URL...")
-                    continue
-            
-            if generated_text is None:
-                # All URLs failed
-                error_msg = f"All Ollama connection attempts failed. Last error: {last_error}"
-                logger.error(error_msg)
-                logger.error(f"Tried URLs: {urls_to_try}")
-                raise Exception(error_msg)
+            logger.info(f"✅ Successfully generated {outreach_type} content (length: {len(generated_text)})")
             
             # Try to parse JSON response
             try:
+                # Clean the response - remove markdown code blocks if present
+                cleaned_text = generated_text.strip()
+                
+                # Remove markdown code blocks
+                if cleaned_text.startswith('```'):
+                    # Extract content between ```json and ```
+                    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', cleaned_text, re.DOTALL)
+                    if json_match:
+                        cleaned_text = json_match.group(1)
+                    else:
+                        # Try to find JSON without language tag
+                        json_match = re.search(r'```\s*(\{.*?\})\s*```', cleaned_text, re.DOTALL)
+                        if json_match:
+                            cleaned_text = json_match.group(1)
+                
                 # Look for JSON in the response
-                start_idx = generated_text.find('{')
-                end_idx = generated_text.rfind('}') + 1
-                if start_idx != -1 and end_idx != -1:
-                    json_str = generated_text[start_idx:end_idx]
+                start_idx = cleaned_text.find('{')
+                end_idx = cleaned_text.rfind('}') + 1
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    json_str = cleaned_text[start_idx:end_idx]
+                    # Try to parse the JSON
                     parsed_content = json.loads(json_str)
                     
                     # Extract title and content
@@ -456,34 +439,45 @@ Format your response as JSON:
                         "title": title,
                         "content": content
                     }
-            except json.JSONDecodeError:
-                logger.warning(f"Could not parse JSON from LLM response for {outreach_type}")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Could not parse JSON from LLM response for {outreach_type}: {e}")
+                logger.debug(f"Generated text was: {generated_text[:200]}...")
             
             # Fallback: use the entire response as content
-            # Try to extract subject from the text
+            # Try to extract subject/title from the text if it's plain text
             fallback_title = f"{outreach_type.title()} Outreach"
+            fallback_content = generated_text.strip()
+            
             if outreach_type == "email":
                 # Try to find subject line in the text
-                subject_match = re.search(r'(?:subject|title)[\s:]+["\']?([^"\'\n]+)["\']?', generated_text, re.IGNORECASE)
-                if subject_match:
-                    fallback_title = subject_match.group(1).strip()
+                # Look for patterns like "Subject: ..." or "Title: ..." or first line if it looks like a subject
+                subject_patterns = [
+                    r'(?:subject|title)[\s:]+["\']?([^"\'\n]+)["\']?',
+                    r'^([^:\n]{5,60})$',  # First line that looks like a subject (5-60 chars)
+                ]
+                
+                for pattern in subject_patterns:
+                    subject_match = re.search(pattern, generated_text, re.IGNORECASE | re.MULTILINE)
+                    if subject_match:
+                        potential_title = subject_match.group(1).strip()
+                        if potential_title and len(potential_title) > 5:
+                            fallback_title = potential_title
+                            # Remove the title from content if it's on first line
+                            fallback_content = re.sub(f'^{re.escape(potential_title)}\\s*\n?', '', fallback_content, flags=re.IGNORECASE | re.MULTILINE).strip()
+                            break
+                
+                # If response is very short and looks like just a subject line, use it as title
+                if len(fallback_content) < 100 and not '\n' in fallback_content:
+                    fallback_title = fallback_content
+                    fallback_content = "I hope this email finds you well. I'm reaching out to explore potential partnership opportunities between our organizations."
             
             return {
                 "title": fallback_title,
-                "content": generated_text
+                "content": fallback_content if fallback_content else generated_text
             }
                         
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error calling LLM for {outreach_type}: {str(e)}")
-            logger.error(f"Ollama URL was: {self.ollama_url}")
-            raise Exception(f"Failed to connect to Ollama service at {self.ollama_url}. Please ensure Ollama is running and accessible.")
-        except requests.exceptions.Timeout as e:
-            logger.error(f"Timeout calling LLM for {outreach_type}: {str(e)}")
-            logger.error(f"Ollama URL was: {self.ollama_url}")
-            raise Exception(f"Timeout connecting to Ollama service at {self.ollama_url}.")
         except Exception as e:
             logger.error(f"Error calling LLM for {outreach_type}: {str(e)}")
-            logger.error(f"Ollama URL was: {self.ollama_url}")
             raise
     
     def _get_fallback_content(self, outreach_type: OutreachType, company_name: str) -> Dict[str, str]:

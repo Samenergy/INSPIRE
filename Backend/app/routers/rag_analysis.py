@@ -27,8 +27,8 @@ def get_rag_service():
         rag_service = RAGAnalysisService(
             milvus_host=getattr(settings, 'milvus_host', 'localhost'),
             milvus_port=getattr(settings, 'milvus_port', '19530'),
-            ollama_host=getattr(settings, 'ollama_base_url', 'http://localhost:11434'),
-            llm_model=getattr(settings, 'ollama_model', 'llama3')
+            ollama_host=None,  # Deprecated - using llama.cpp now
+            llm_model=None  # Deprecated - using llama.cpp now
         )
     return rag_service
 
@@ -68,7 +68,7 @@ def get_rag_service():
     **Technology Stack:**
     - **Embeddings:** SentenceTransformer (all-MiniLM-L6-v2)
     - **Vector DB:** Milvus (with in-memory fallback)
-    - **LLM:** Llama-3 via Ollama
+    - **LLM:** Phi-3.5 Mini 3.8B via llama.cpp (direct inference)
     - **Retrieval:** Cosine similarity search
     
     **Improvements over Base Model:**
@@ -293,7 +293,7 @@ async def get_rag_info():
                 'step_5': {
                     'name': 'Generation',
                     'description': 'Extract structured information using LLM',
-                    'model': 'Llama-3 (via Ollama)',
+                    'model': 'Phi-3.5 Mini 3.8B (via llama.cpp)',
                     'parameters': {
                         'temperature': 0.3,
                         'max_tokens': 800
@@ -362,22 +362,23 @@ async def get_rag_info():
                     'fallback': 'In-memory NumPy'
                 },
                 'llm': {
-                    'model': 'Llama-3',
-                    'provider': 'Ollama (local)',
+                    'model': 'Phi-3.5 Mini 3.8B Q8_0',
+                    'provider': 'llama.cpp (direct inference)',
                     'parameters': {
                         'temperature': 0.3,
-                        'max_tokens': 800
+                        'max_tokens': 1000,
+                        'context_window': 4096
                     }
                 }
             },
             'requirements': {
                 'core': ['sentence-transformers', 'numpy', 'requests'],
                 'vector_db': ['pymilvus (optional, with fallback)'],
-                'llm': ['Ollama with Llama-3 model installed'],
+                'llm': ['llama-cpp-python with Phi-3.5 Mini GGUF model'],
                 'installation': {
                     'embeddings': 'pip install sentence-transformers',
                     'milvus': 'pip install pymilvus (optional)',
-                    'ollama': 'curl -fsSL https://ollama.com/install.sh | sh && ollama pull llama3'
+                    'llm': 'pip install llama-cpp-python && download Phi-3.5-mini-instruct-Q8_0.gguf'
                 }
             },
             'endpoints': {
@@ -413,16 +414,16 @@ async def check_rag_health():
             'llm': 'checking...'
         }
         
-        # Test LLM connection
+        # Test LLM service (llama.cpp)
         try:
-            import requests
-            response = requests.get(f"{rag_svc.ollama_host}/api/tags", timeout=5)
-            if response.status_code == 200:
-                models = response.json().get('models', [])
-                llama_available = any('llama3' in str(m.get('name', '')).lower() for m in models)
-                health_status['llm'] = 'available (llama3)' if llama_available else 'ollama running, but llama3 not found'
+            from app.services.llm_service import get_llm_service
+            llm_service = get_llm_service()
+            if llm_service.is_available():
+                model_info = llm_service.get_model_info()
+                health_status['llm'] = f"available ({model_info.get('model_type', 'Phi-3.5 Mini')})"
+                health_status['llm_info'] = model_info
             else:
-                health_status['llm'] = 'ollama not responding'
+                health_status['llm'] = 'unavailable (model not loaded)'
         except Exception as e:
             health_status['llm'] = f'unavailable: {str(e)}'
         
