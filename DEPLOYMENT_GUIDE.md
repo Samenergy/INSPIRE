@@ -123,22 +123,106 @@ pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-c
 
 ---
 
-### **STEP 5: Update .env File (On Server)**
+### **STEP 5: Update .env File (On Server) - ⚠️ CRITICAL STEP**
+
+**Option A: Use the helper script (EASIER)**
+```bash
+cd Backend
+chmod +x update-env-on-server.sh
+./update-env-on-server.sh
+
+# The script will:
+# - Backup your existing .env
+# - Add all required new variables
+# - Preserve existing settings
+```
+
+**Option B: Manual update (if you prefer)**
 
 ```bash
-# Edit .env file on server
-nano Backend/.env
+# Navigate to Backend directory
+cd Backend
 
-# Make sure these variables are set (update if needed):
-# LLM_MODEL_PATH=models/Phi-3.5-mini-instruct-Q8_0.gguf
-# LLM_N_CTX=4096
-# LLM_N_THREADS=8
+# Backup existing .env file (safety first!)
+cp .env .env.backup
 
-# Also ensure Docker environment matches (if using Docker):
-# DB_HOST=mysql (not localhost for Docker)
-# REDIS_URL=redis://redis:6379/0
-# MILVUS_HOST=milvus
+# Edit .env file
+nano .env
 ```
+
+**🔴 ADD these NEW variables (required for Phi-3.5 Mini):**
+
+```env
+# =============================================================================
+# LLM Configuration (llama.cpp with Phi-3.5 Mini) - NEW
+# =============================================================================
+LLM_MODEL_PATH=/app/models/Phi-3.5-mini-instruct-Q8_0.gguf
+LLM_N_CTX=4096
+LLM_N_THREADS=8
+
+# =============================================================================
+# RAG Hyperparameters - NEW
+# =============================================================================
+RAG_TEMPERATURE=0.3
+RAG_TOP_K=5
+RAG_CHUNK_SIZE=500
+RAG_CHUNK_OVERLAP=100
+
+# =============================================================================
+# Rate Limiting Configuration - NEW
+# =============================================================================
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW=3600
+
+# =============================================================================
+# Scraping Performance Configuration - NEW
+# =============================================================================
+MAX_CONCURRENT_SCRAPES=5
+REQUEST_TIMEOUT=30
+RETRY_ATTEMPTS=3
+RETRY_DELAY=1
+
+# =============================================================================
+# Data Management Configuration - NEW
+# =============================================================================
+MAX_ARTICLES_PER_COMPANY=50
+DATA_CLEANUP_DAYS=30
+```
+
+**🔵 UPDATE these variables (if they exist, change for Docker):**
+
+```env
+# For Docker - use service names, not localhost
+DB_HOST=mysql
+DB_USER=app_user
+DB_PASSWORD=app_password
+MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/inspire
+REDIS_URL=redis://redis:6379/0
+MILVUS_HOST=milvus
+MILVUS_PORT=19530
+```
+
+**🟡 REMOVE or COMMENT OUT (deprecated):**
+
+```env
+# OLLAMA_BASE_URL=http://ollama:11434  # DEPRECATED - remove or comment out
+# OLLAMA_MODEL=llama3.1:8b-instruct-q4_K_M  # DEPRECATED - remove or comment out
+```
+
+**💡 Quick copy-paste command to check what's missing:**
+
+```bash
+# On server, check which variables are missing:
+cd Backend
+grep -q "LLM_MODEL_PATH" .env || echo "❌ LLM_MODEL_PATH missing"
+grep -q "LLM_N_CTX" .env || echo "❌ LLM_N_CTX missing"
+grep -q "LLM_N_THREADS" .env || echo "❌ LLM_N_THREADS missing"
+grep -q "RAG_TEMPERATURE" .env || echo "❌ RAG_TEMPERATURE missing"
+```
+
+**Save and exit nano:** `Ctrl+X`, then `Y`, then `Enter`
+
+**📋 Reference template:** See `Backend/.env.server.template` for complete example
 
 ---
 
@@ -264,25 +348,47 @@ pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-c
 
 ### Local Machine (Push Changes):
 ```bash
+cd /Users/samenergy/Desktop/Cappp
 git add .
 git commit -m "feat: Migrate to Phi-3.5 Mini via llama.cpp"
 git push origin main
 ```
 
-### Server (Deploy Changes):
+### Server (Deploy Changes) - ⚠️ IMPORTANT: Update .env!
+
 ```bash
+# 1. Pull latest code
 git pull origin main
+
+# 2. ⚠️ CRITICAL: Update .env file (helper script OR manual)
 cd Backend
-# Download model (3.8GB)
+chmod +x update-env-on-server.sh
+./update-env-on-server.sh
+
+# The script will add required variables:
+# - LLM_MODEL_PATH=/app/models/Phi-3.5-mini-instruct-Q8_0.gguf
+# - LLM_N_CTX=4096
+# - LLM_N_THREADS=8
+# - RAG_TEMPERATURE, RAG_TOP_K, etc.
+# - And other missing variables
+
+# OR manually edit .env:
+# nano .env
+# (Add variables from STEP 5 below)
+
+# 3. Download model (3.8GB) - required!
 mkdir -p models && cd models
 wget https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q8_0.gguf
 cd ..
-# Rebuild and restart
+
+# 4. Rebuild and restart services
 docker-compose down
 docker-compose build --no-cache
 docker-compose up -d
-# Verify
+
+# 5. Verify everything works
 docker-compose logs -f app
+# Check logs for: "✅ Phi-3.5 Mini model loaded successfully"
 ```
 
 ---
