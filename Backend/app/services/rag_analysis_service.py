@@ -117,12 +117,12 @@ class RAGAnalysisService:
         
         # Hyperparameters
         self.hyperparameters = {
-            'chunk_size': 500,
-            'chunk_overlap': 100,
-            'top_k': 5,
+            'chunk_size': 400,  # Reduced from 500 for faster processing
+            'chunk_overlap': 80,  # Reduced proportionally
+            'top_k': 3,  # Reduced from 5 to 3 for faster retrieval and less LLM processing
             'temperature': 0.3,
-            'max_tokens': 800,  # Reduced from 1000 for faster inference (still sufficient for quality)
-            'similarity_threshold': 0.1  # Lowered from 0.2 to allow more chunks through
+            'max_tokens': 600,  # Reduced from 800 for faster inference (still maintains quality)
+            'similarity_threshold': 0.15  # Increased from 0.1 to filter more chunks faster
         }
         
         # Initialize embedding model - FORCE CPU to prevent MPS/SIGSEGV crashes
@@ -149,7 +149,7 @@ class RAGAnalysisService:
                     alias="default",
                     host=milvus_host,
                     port=milvus_port,
-                    timeout=5
+                    timeout=10  # Balanced timeout: enough for startup, not too long
                 )
                 self.milvus_available = True
                 logger.info(f"✅ Connected to Milvus at {milvus_host}:{milvus_port}")
