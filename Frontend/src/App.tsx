@@ -15,6 +15,7 @@ import LandingPage from './components/auth/LandingPage';
 import LoginPage from './components/auth/LoginPage';
 import SignupPage from './components/auth/SignupPage';
 import SMESetupPage from './components/auth/SMESetupPage';
+import TermsAndConditions from './components/auth/TermsAndConditions';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -48,6 +49,7 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
+            <Route path="/terms" element={<TermsAndConditions />} />
             <Route path="/sme-setup" element={<SMESetupPage />} />
             <Route path="/logout" element={<LogoutRedirect />} />
 

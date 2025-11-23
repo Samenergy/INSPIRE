@@ -323,7 +323,7 @@ const ProfileSettings: React.FC = () => {
     }
     
     if (!profileForm.objective) {
-      errors.objective = 'Objective is required';
+      errors.objective = 'Description is required';
       isValid = false;
     }
     
@@ -541,7 +541,7 @@ const ProfileSettings: React.FC = () => {
               <Divider sx={{ my: 3 }} />
               
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3, px: 2 }}>
-                {profileForm.objective || 'No objective set'}
+                {profileForm.objective || 'No description set'}
               </Typography>
               
               <Button
@@ -651,7 +651,7 @@ const ProfileSettings: React.FC = () => {
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <StyledTextField
-                      label="Objective"
+                      label="Description"
                       name="objective"
                       value={profileForm.objective}
                       onChange={handleProfileChange}

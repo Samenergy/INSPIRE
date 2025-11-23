@@ -1,6 +1,6 @@
  /**
  * SME Setup Page Component
- * Additional setup for SME objectives and sector after signup
+ * Additional setup for SME description and sector after signup
  */
 
 import React, { useState, useEffect } from 'react';
@@ -74,7 +74,7 @@ export default function SMESetupPage(): JSX.Element {
     }
 
     if (!formData.objective.trim()) {
-      errors.objective = 'Please describe your business objectives';
+      errors.objective = 'Please describe your business';
     } else if (formData.objective.trim().length < 20) {
       errors.objective = 'Please provide a more detailed description (at least 20 characters)';
     }
@@ -94,7 +94,7 @@ export default function SMESetupPage(): JSX.Element {
     setError(null);
 
     try {
-      // Update SME profile with sector and objective
+      // Update SME profile with sector and description
       const response = await updateProfile(formData);
       
       if (response.success) {
@@ -189,10 +189,10 @@ export default function SMESetupPage(): JSX.Element {
               )}
             </div>
 
-            {/* Business Objectives */}
+            {/* Business Description */}
             <div>
               <label htmlFor="objective" className="block text-sm font-medium text-gray-700 mb-2">
-                Business Objectives
+                Business Description
               </label>
               <textarea
                 id="objective"
@@ -202,7 +202,7 @@ export default function SMESetupPage(): JSX.Element {
                 value={formData.objective}
                 onChange={handleInputChange}
                 className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
-                placeholder="Describe your business objectives, goals, and what you hope to achieve. This helps us provide better recommendations for partnerships and opportunities."
+                placeholder="Describe your business, goals, and what you hope to achieve. This helps us provide better recommendations for partnerships and opportunities."
               />
               <div className="mt-1 flex justify-between text-xs text-gray-500">
                 <span>Minimum 20 characters</span>

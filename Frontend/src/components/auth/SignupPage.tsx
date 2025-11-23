@@ -24,6 +24,7 @@ export default function SignupPage(): JSX.Element {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -89,6 +90,10 @@ export default function SignupPage(): JSX.Element {
       errors.confirmPassword = 'Please confirm your password';
     } else if (formData.password !== confirmPassword) {
       errors.confirmPassword = 'Passwords do not match';
+    }
+
+    if (!acceptedTerms) {
+      errors.terms = 'You must accept the Terms and Conditions to create an account';
     }
 
     setValidationErrors(errors);
@@ -267,6 +272,45 @@ export default function SignupPage(): JSX.Element {
               />
               {validationErrors.confirmPassword && (
                 <p className="mt-1 text-sm text-red-600">{validationErrors.confirmPassword}</p>
+              )}
+            </div>
+
+            {/* Terms and Conditions */}
+            <div>
+              <div className="flex items-start">
+                <input
+                  id="terms"
+                  name="terms"
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => {
+                    setAcceptedTerms(e.target.checked);
+                    if (validationErrors.terms) {
+                      setValidationErrors(prev => ({
+                        ...prev,
+                        terms: ''
+                      }));
+                    }
+                  }}
+                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="terms" className="ml-2 text-sm text-gray-700">
+                  I agree to the{' '}
+                  <Link
+                    to="/terms"
+                    className="text-blue-600 hover:text-blue-700 font-medium underline"
+                    onClick={(e) => {
+                      // Open in new tab
+                      e.preventDefault();
+                      window.open('/terms', '_blank');
+                    }}
+                  >
+                    Terms and Conditions
+                  </Link>
+                </label>
+              </div>
+              {validationErrors.terms && (
+                <p className="mt-1 text-sm text-red-600">{validationErrors.terms}</p>
               )}
             </div>
 

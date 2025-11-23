@@ -794,9 +794,9 @@ export default function LandingPage(): JSX.Element {
 
             <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-8">
               <div className="flex space-x-6 text-gray-600">
-                <a href="#" className="hover:text-gray-900 transition-colors">
+                <Link to="/terms" className="hover:text-gray-900 transition-colors">
                   Terms
-                </a>
+                </Link>
                 <a href="#" className="hover:text-gray-900 transition-colors">
                   Privacy
                 </a>
