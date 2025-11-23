@@ -21,8 +21,8 @@ services:
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
       - LLM_MODEL_PATH=/app/models/Phi-3.5-mini-instruct-Q8_0.gguf
-      - LLM_N_CTX=4096
-      - LLM_N_THREADS=8
+      - LLM_N_CTX=${LLM_N_CTX:-4096}
+      - LLM_N_THREADS=${LLM_N_THREADS:-12}
       - DEBUG=False
       - TORCH_DEVICE=cpu
       - PYTORCH_ENABLE_MPS_FALLBACK=1
@@ -48,8 +48,8 @@ services:
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
       - LLM_MODEL_PATH=/app/models/Phi-3.5-mini-instruct-Q8_0.gguf
-      - LLM_N_CTX=4096
-      - LLM_N_THREADS=8
+      - LLM_N_CTX=${LLM_N_CTX:-4096}
+      - LLM_N_THREADS=${LLM_N_THREADS:-8}
       - DEBUG=False
       - TORCH_DEVICE=cpu
       - PYTORCH_ENABLE_MPS_FALLBACK=1
