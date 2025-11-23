@@ -40,8 +40,8 @@ huggingface-hub==0.16.4
 scikit-learn==1.3.2
 # RAG Analysis Dependencies
 pymilvus==2.3.4  # Vector database (optional, has in-memory fallback)
-# Dependency pin for environs / pymilvus
-marshmallow>=3.13.0
+# Dependency pin for environs / pymilvus compatibility
+marshmallow>=3.13.0,<4.0.0  # Required for environs __version_info__ check
 environs==9.5.0
 # LLM Inference (llama.cpp with Phi-3.5 Mini)
 llama-cpp-python>=0.2.0
