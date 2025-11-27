@@ -462,8 +462,8 @@ class RAGAnalysisService:
         
         if generated_text:
             logger.debug(f"✅ LLM generated {len(generated_text)} characters")
-            return generated_text
-        else:
+                        return generated_text
+                    else:
             logger.error("LLM returned empty response")
         return None
     

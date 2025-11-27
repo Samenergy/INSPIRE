@@ -394,11 +394,33 @@ const ProfileSettings: React.FC = () => {
       setIsSubmitting(true);
       
       try {
+        // Prepare update data - ensure we send valid values
+        const updateData: { sector?: string; objective?: string } = {};
+        
+        // Only include fields that have values
+        if (profileForm.sector && profileForm.sector.trim()) {
+          updateData.sector = profileForm.sector.trim();
+        }
+        
+        if (profileForm.objective && profileForm.objective.trim()) {
+          updateData.objective = profileForm.objective.trim();
+        }
+        
+        // Ensure at least one field is being updated
+        if (Object.keys(updateData).length === 0) {
+          setSnackbar({
+            open: true,
+            message: 'Please provide at least one field to update',
+            severity: 'warning',
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        
+        console.log('Sending profile update:', updateData);
+        
         // Call the actual API to update profile
-        const response = await updateProfile({
-          sector: profileForm.sector,
-          objective: profileForm.objective,
-        });
+        const response = await updateProfile(updateData);
         
         console.log('Profile update response:', response);
         
@@ -412,15 +434,19 @@ const ProfileSettings: React.FC = () => {
         } else {
           setSnackbar({
             open: true,
-            message: response.message || 'Failed to update profile',
+            message: response.message || response.error || 'Failed to update profile',
             severity: 'error',
           });
         }
       } catch (error: any) {
         console.error('Profile update error:', error);
+        const errorMessage = error?.response?.data?.message || 
+                           error?.response?.data?.error || 
+                           error?.message || 
+                           'Failed to update profile. Please try again.';
         setSnackbar({
           open: true,
-          message: error.message || 'Failed to update profile',
+          message: errorMessage,
           severity: 'error',
         });
       } finally {
@@ -512,7 +538,6 @@ const ProfileSettings: React.FC = () => {
             <CardContent sx={{ textAlign: 'center', py: 4 }}>
               <Box sx={{ position: 'relative', width: 'fit-content', mx: 'auto' }}>
                 <ProfileAvatar
-                  src="/avatar-placeholder.jpg"
                   alt={user?.name || 'User'}
                 >
                   {!user || !user.name ? 'U' : (() => {

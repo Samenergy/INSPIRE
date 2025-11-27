@@ -43,11 +43,11 @@ def check_llm_service():
             print(f"   Context window: {model_info.get('context_window', 'Unknown')}")
             print(f"   CPU threads: {model_info.get('cpu_threads', 'Unknown')}")
             return True
-        else:
+                        else:
             print("⚠️  LLM service not available")
             print("   Please ensure Phi-3.5 Mini model is downloaded to models/ directory")
             print("   Download from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF")
-            return False
+        return False
     except Exception as e:
         print(f"⚠️  Could not check LLM service: {e}")
         return False

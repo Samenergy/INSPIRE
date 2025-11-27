@@ -257,15 +257,24 @@ class InspireDatabaseService:
             updates = []
             params = []
             
+            # Allow None values to be set (for clearing fields) and empty strings
+            # If a field is provided (not None), include it in the update
             if sector is not None:
                 updates.append("sector = %s")
-                params.append(sector)
+                params.append(sector if sector else "")  # Convert None to empty string
             
             if objective is not None:
                 updates.append("objective = %s")
-                params.append(objective)
+                params.append(objective if objective else "")  # Convert None to empty string
             
             if not updates:
+                logger.warning(f"No fields to update for SME {sme_id} (both sector and objective are None)")
+                return False
+            
+            # Verify SME exists before updating
+            existing_sme = await self.get_sme(sme_id)
+            if not existing_sme:
+                logger.error(f"SME {sme_id} not found")
                 return False
             
             # Add sme_id to params
@@ -273,11 +282,27 @@ class InspireDatabaseService:
             
             query = f"UPDATE sme SET {', '.join(updates)} WHERE sme_id = %s"
             
+            logger.info(f"Updating SME {sme_id} with query: {query}, params: {params}")
             affected_rows = await self.db.execute_update(query, tuple(params))
-            return affected_rows > 0
+            
+            if affected_rows == 0:
+                logger.warning(f"No rows affected when updating SME {sme_id}. SME may not exist or values are unchanged.")
+                # Check if values are actually different
+                if existing_sme:
+                    sector_changed = sector is not None and existing_sme.get('sector') != sector
+                    objective_changed = objective is not None and existing_sme.get('objective') != objective
+                    if not sector_changed and not objective_changed:
+                        logger.info(f"Values unchanged for SME {sme_id}, but update is still considered successful")
+                        return True  # Consider it successful if values are the same
+                return False
+            
+            logger.info(f"Successfully updated SME {sme_id}, affected rows: {affected_rows}")
+            return True
             
         except Exception as e:
-            logger.error(f"Error updating SME: {str(e)}")
+            logger.error(f"Error updating SME {sme_id}: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
     
     # Company Operations

@@ -355,7 +355,7 @@ class SMESignupComplete(BaseModel):
 
 class SMEUpdate(BaseModel):
     """SME profile update for sector and objective"""
-    sector: Optional[str] = Field(None, min_length=1, max_length=100, description="Business sector")
+    sector: Optional[str] = Field(None, max_length=100, description="Business sector")
     objective: Optional[str] = Field(None, description="Business objectives and goals")
 
 class SMESignup(BaseModel):

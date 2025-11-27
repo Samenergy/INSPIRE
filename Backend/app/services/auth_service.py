@@ -194,23 +194,49 @@ class AuthService:
     async def update_sme_profile(self, sme_id: int, update_data: SMEUpdate) -> Dict[str, Any]:
         """Update SME profile with sector and objective"""
         try:
+            logger.info(f"Updating SME profile for ID {sme_id}: sector={update_data.sector}, objective={update_data.objective}")
+            
+            # Check if SME exists
+            existing_sme = await self.db.get_sme(sme_id)
+            if not existing_sme:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="SME not found"
+                )
+            
             # Update SME in database
+            # Pass None if field is empty string to allow clearing fields
+            sector_value = update_data.sector if update_data.sector else None
+            objective_value = update_data.objective if update_data.objective else None
+            
+            # If both are None, we still want to allow the update (might be clearing fields)
+            # But we need at least one field to update
+            if sector_value is None and objective_value is None:
+                logger.warning(f"No fields provided for update for SME {sme_id}")
+                # Still proceed - might be intentional clearing
+            
             success = await self.db.update_sme(
                 sme_id=sme_id,
-                sector=update_data.sector,
-                objective=update_data.objective
+                sector=sector_value,
+                objective=objective_value
             )
             
             if not success:
+                logger.error(f"Database update returned False for SME {sme_id}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Failed to update SME profile"
+                    detail="Failed to update SME profile - no changes were made"
                 )
             
             # Get updated SME
             sme = await self.db.get_sme(sme_id)
+            if not sme:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="SME not found after update"
+                )
             
-            logger.info(f"SME profile updated: {sme_id}")
+            logger.info(f"SME profile updated successfully: {sme_id}")
             
             return {
                 "sme": sme,
@@ -221,9 +247,11 @@ class AuthService:
             raise
         except Exception as e:
             logger.error(f"Error updating SME profile: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Profile update failed"
+                detail=f"Profile update failed: {str(e)}"
             )
     
     async def signup_sme(self, sme_data: SMESignupComplete) -> Dict[str, Any]:
