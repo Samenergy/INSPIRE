@@ -95,6 +95,8 @@ import ArticleIcon from "@mui/icons-material/Article";
 import TaskIcon from "@mui/icons-material/Task";
 import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
 import CheckBoxIcon from "@mui/icons-material/CheckBox";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import PartnerFinderModal from "./PartnerFinderModal";
 
 // Use the global theme from ThemeContext
 
@@ -903,6 +905,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
   // Add company dialog state (using different name to avoid conflict)
   const [addCompanyDialogOpen, setAddCompanyDialogOpen] = useState(false);
+  const [partnerFinderModalOpen, setPartnerFinderModalOpen] = useState(false);
   const [addCompanyForm, setAddCompanyForm] = useState({
     name: "",
     location: "",
@@ -965,16 +968,53 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           
           if (!isCurrentlyAnalyzing) {
             // Try to find active analysis by checking recent job_id patterns
-            // Format: analysis-{company_id}-{timestamp}
+            // Formats: analysis-{company_id}-{timestamp} or partner-finder-{company_id}-{uuid}
             // We'll check a few recent timestamps (last 2 hours)
             const now = Date.now();
             const twoHoursAgo = now - 2 * 60 * 60 * 1000;
             
-            // Check a few potential job_ids (recent timestamps)
+            // Check potential job_ids for both regular analysis and partner-finder analysis
+            // For partner-finder, we need to check the analysis table or try common patterns
+            // First, try checking if there's an active analysis in the database
+            try {
+              const analysisResponse = await fetch(
+                `https://api.inspire.software/api/inspire/companies/${company.company_id}/analysis`,
+                {
+                  headers: {
+                    ...(localStorage.getItem("auth_token")
+                      ? {
+                          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                        }
+                      : {}),
+                  },
+                }
+              );
+              
+              if (analysisResponse.ok) {
+                const analysisData = await analysisResponse.json();
+                // If there's an analysis with status IN_PROGRESS, there might be an active job
+                if (analysisData.success && analysisData.data) {
+                  const analyses = Array.isArray(analysisData.data) ? analysisData.data : [analysisData.data];
+                  const inProgressAnalysis = analyses.find((a: any) => a.status === 'IN_PROGRESS');
+                  if (inProgressAnalysis) {
+                    // Try to find the job_id - it might be stored in metadata or we can construct it
+                    // For now, we'll try common patterns
+                    hasActiveAnalysis = true;
+                  }
+                }
+              }
+            } catch (error) {
+              // Continue with other checks
+            }
+            
+            // Check a few potential job_ids (recent timestamps and partner-finder patterns)
             const potentialJobIds = [
               `analysis-${company.company_id}-${now}`,
               `analysis-${company.company_id}-${now - 60000}`, // 1 min ago
               `analysis-${company.company_id}-${now - 300000}`, // 5 min ago
+              // Partner finder jobs use: partner-finder-{company_id}-{uuid}
+              // We can't predict the UUID, but we can check if there's any active job
+              // by trying to get progress with a pattern (backend should handle this)
             ];
             
             // Try to find an active analysis
@@ -1008,6 +1048,45 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
               } catch (error) {
                 // Silently continue checking other job_ids
               }
+            }
+            
+            // Also check localStorage for stored job IDs (including partner-finder jobs)
+            try {
+              const activeAnalyses = JSON.parse(localStorage.getItem('active_analyses') || '{}');
+              const storedJobId = activeAnalyses[company.company_id];
+              if (storedJobId && (storedJobId.startsWith('analysis-') || storedJobId.startsWith('partner-finder-'))) {
+                // Verify the job is still active
+                try {
+                  const progressResponse = await fetch(
+                    `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${storedJobId}`,
+                    {
+                      headers: {
+                        ...(localStorage.getItem("auth_token")
+                          ? {
+                              Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
+                            }
+                          : {}),
+                      },
+                    }
+                  );
+                  
+                  if (progressResponse.ok) {
+                    const progressData = await progressResponse.json();
+                    if (progressData.success && progressData.data) {
+                      const status = progressData.data.status;
+                      if (status === "running" || status === "pending") {
+                        hasActiveAnalysis = true;
+                        activeJobId = storedJobId;
+                        console.log(`[loadCompanies] Found active analysis in localStorage for company ${company.company_id}: ${storedJobId} (status: ${status})`);
+                      }
+                    }
+                  }
+                } catch (error) {
+                  // Job might be completed or invalid, continue
+                }
+              }
+            } catch (error) {
+              // localStorage parse error, continue
             }
           } else {
             // If already in state, get the job_id from analysisJobMetaRef
@@ -5762,6 +5841,22 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             
             {!detailsView ? (
             <Box display="flex" alignItems="center" gap={1}>
+              <Tooltip title="AI-Powered Partner Finder">
+                <IconButton
+                  onClick={() => setPartnerFinderModalOpen(true)}
+                  sx={{
+                    backgroundColor: (theme) => theme.palette.primary.main,
+                    color: "#fff",
+                    "&:hover": {
+                      backgroundColor: (theme) => theme.palette.primary.dark,
+                    },
+                    width: 32,
+                    height: 32,
+                  }}
+                >
+                  <AutoAwesomeIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
               <Tooltip title="Add new company">
                 <IconButton
                   onClick={handleAddCompany}
@@ -7991,6 +8086,19 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             setShowAnimation(false);
             setAnimationStartElement(null);
             setAnimationEndElement(null);
+          }}
+        />
+        <PartnerFinderModal
+          open={partnerFinderModalOpen}
+          onClose={() => setPartnerFinderModalOpen(false)}
+          onPartnersFound={async () => {
+            // Refresh company list
+            if (user?.sme_id) {
+              setLoading(true);
+              const updatedCompanies = await loadCompanies();
+              setCompanies(updatedCompanies);
+              setLoading(false);
+            }
           }}
         />
     </CompaniesContainer>

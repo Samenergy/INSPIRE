@@ -11,16 +11,12 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: 5173,
     open: true,
     fs: {
       // Increase file system timeout to prevent timeouts during dependency pre-bundling
       timeout: 300000, // 5 minutes
     },
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
   },
   optimizeDeps: {
     // Force include specific packages to optimize pre-bundling
@@ -32,8 +28,31 @@ export default defineConfig({
       'react',
       'react-dom',
       'react-router-dom',
+      'chart.js',
+      'react-chartjs-2',
+      'framer-motion',
     ],
     // Exclude problematic packages if needed
-    // exclude: [],
+    exclude: [],
+    // Increase pre-bundling concurrency for faster startup
+    esbuildOptions: {
+      target: 'esnext',
+    },
+  },
+  // Enable faster HMR and better chunking
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-mui': ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          'vendor-charts': ['chart.js', 'react-chartjs-2'],
+        },
+      },
+    },
+    // Increase chunk size warning limit
+    chunkSizeWarningLimit: 1000,
   },
 }); 

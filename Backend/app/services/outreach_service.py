@@ -458,7 +458,7 @@ Return ONLY the JSON object, nothing else.
                 
                 for pattern in subject_patterns:
                     subject_match = re.search(pattern, generated_text, re.IGNORECASE | re.MULTILINE)
-                if subject_match:
+                    if subject_match:
                         potential_title = subject_match.group(1).strip()
                         if potential_title and len(potential_title) > 5:
                             fallback_title = potential_title

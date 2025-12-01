@@ -1,16 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 import Sidebar from './components/layout/Sidebar';
-import Dashboard from './components/dashboard/Dashboard';
 import Notifications from './components/notifications/Notifications';
-import Companies from './components/accounts/Accounts';
-import AccountsNew from './components/accounts/AccountsNew';
-import Campaigns from './components/campaigns';
-import Settings from './components/settings/Settings';
-import ProfileSettings from './components/settings/ProfileSettings';
 import LandingPage from './components/auth/LandingPage';
 import LoginPage from './components/auth/LoginPage';
 import SignupPage from './components/auth/SignupPage';
@@ -19,6 +14,29 @@ import TermsAndConditions from './components/auth/TermsAndConditions';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+
+// Lazy load heavy components for code splitting
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard'));
+const Companies = lazy(() => import('./components/accounts/Accounts'));
+const AccountsNew = lazy(() => import('./components/accounts/AccountsNew'));
+const Campaigns = lazy(() => import('./components/campaigns'));
+const Settings = lazy(() => import('./components/settings/Settings'));
+const ProfileSettings = lazy(() => import('./components/settings/ProfileSettings'));
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <Box
+    sx={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100vh',
+      width: '100%',
+    }}
+  >
+    <CircularProgress />
+  </Box>
+);
 
 function App() {
   const [showNotifications, setShowNotifications] = React.useState(false);
@@ -63,7 +81,9 @@ function App() {
                   showCampaignNotification={showCampaignNotification}
                   onCampaignNotificationClick={clearCampaignNotifications}
                 >
-                  <Dashboard />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <Dashboard />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
@@ -77,14 +97,18 @@ function App() {
                   showCampaignNotification={showCampaignNotification}
                   onCampaignNotificationClick={clearCampaignNotifications}
                 >
-                  <Companies onNewCampaign={handleNewCampaign} />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <Companies onNewCampaign={handleNewCampaign} />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
             <Route path="/accounts/new" element={
               <ProtectedRoute>
                 <AppLayout toggleNotifications={toggleNotifications} showNotifications={showNotifications}>
-                  <AccountsNew />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <AccountsNew />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
@@ -97,14 +121,18 @@ function App() {
                   showCampaignNotification={showCampaignNotification}
                   onCampaignNotificationClick={clearCampaignNotifications}
                 >
-                  <Campaigns onVisit={clearCampaignNotifications} />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <Campaigns onVisit={clearCampaignNotifications} />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
             <Route path="/settings" element={
               <ProtectedRoute>
                 <AppLayout toggleNotifications={toggleNotifications} showNotifications={showNotifications}>
-                  <Settings />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <Settings />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
@@ -112,7 +140,9 @@ function App() {
             <Route path="/settings/profile" element={
               <ProtectedRoute>
                 <AppLayout toggleNotifications={toggleNotifications} showNotifications={showNotifications}>
-                  <ProfileSettings />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <ProfileSettings />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
@@ -120,7 +150,9 @@ function App() {
             <Route path="/settings/notifications" element={
               <ProtectedRoute>
                 <AppLayout toggleNotifications={toggleNotifications} showNotifications={showNotifications}>
-                  <ProfileSettings />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <ProfileSettings />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
@@ -128,7 +160,9 @@ function App() {
             <Route path="/settings/security" element={
               <ProtectedRoute>
                 <AppLayout toggleNotifications={toggleNotifications} showNotifications={showNotifications}>
-                  <ProfileSettings />
+                  <Suspense fallback={<LoadingFallback />}>
+                    <ProfileSettings />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />

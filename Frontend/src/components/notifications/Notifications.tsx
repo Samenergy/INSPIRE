@@ -31,7 +31,7 @@ import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import SettingsIcon from '@mui/icons-material/Settings';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import { useTheme } from '../../context/ThemeContext';
-import { BORDER_RADIUS } from '../ui/common/constants';
+import { BORDER_RADIUS } from '../ui/common';
 
 const NotificationsContainer = styled(Box)(({ theme }) => ({
   width: '380px',

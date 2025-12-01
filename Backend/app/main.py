@@ -8,7 +8,7 @@ import time
 import socket
 
 from app.config import settings
-from app.routers import comprehensive, apify, advanced_classification, summarization, unified_analysis, inspire_database, auth, outreach
+from app.routers import comprehensive, apify, advanced_classification, summarization, unified_analysis, inspire_database, auth, outreach, partner_finder
 try:
     from app.routers import rag_analysis
     RAG_AVAILABLE = True
@@ -43,7 +43,7 @@ def check_llm_service():
             print(f"   Context window: {model_info.get('context_window', 'Unknown')}")
             print(f"   CPU threads: {model_info.get('cpu_threads', 'Unknown')}")
             return True
-                        else:
+        else:
             print("⚠️  LLM service not available")
             print("   Please ensure Phi-3.5 Mini model is downloaded to models/ directory")
             print("   Download from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF")
@@ -181,8 +181,11 @@ origins = [
     "http://localhost:8000",
     "https://api.inspire.software",
     "http://localhost:3000",
+    "http://localhost:5173",  # Vite default port
+    "http://127.0.0.1:5173",  # Vite default port
     "http://0.0.0.0:8000",
     "http://0.0.0.0:3000",
+    "http://0.0.0.0:5173",
 ]
 
 app.add_middleware(
@@ -219,6 +222,10 @@ print("✅ Authentication endpoints available at /api/auth/")
 # Include Outreach router
 app.include_router(outreach.router, tags=["Outreach"])
 print("✅ Outreach endpoints available at /api/outreach/")
+
+# Include Partner Finder router
+app.include_router(partner_finder.router, tags=["Partner Finder"])
+print("✅ Partner Finder endpoints available at /api/v1/partners/")
 
 
 @app.get("/")
@@ -317,10 +324,64 @@ async def health_check():
 if __name__ == "__main__":
     import os
     port = int(os.getenv("PORT", 8000))
+    
+    # More aggressive reload excludes - use glob patterns
+    # These files are being modified by external processes (IDE, file watchers, etc.)
+    # Use both relative and absolute patterns to catch all variations
+    reload_excludes = [
+        "**/tasks/__init__.py",
+        "app/tasks/__init__.py",
+        "**/scrapers/__init__.py",
+        "app/scrapers/__init__.py",
+        "**/services/summarization_model.py",
+        "app/services/summarization_model.py",
+        "**/logging_config.py",
+        "app/logging_config.py",
+        "**/__pycache__/**",
+        "**/*.pyc",
+        "**/*.pyo",
+        "**/logs/**",
+        "**/models/**",
+        "**/.git/**",
+        "**/node_modules/**",
+        "**/.env*",
+        "**/*.log",
+        "**/*.swp",
+        "**/*.swo",
+        "**/.DS_Store",
+    ]
+    
+    # Only reload on actual code changes, not on config/log files
+    # Use reload_includes to only watch app/ directory (excluding problematic subdirs)
+    # NOTE: We explicitly list directories to watch, avoiding tasks/ and problematic __init__.py files
+    reload_includes = [
+        "app/routers/**/*.py",
+        "app/services/**/*.py",  # Watch all services, but exclude problematic ones via reload_excludes
+        "app/models.py",
+        "app/main.py",
+        "app/config.py",
+        "app/middleware.py",
+        "app/database*.py",
+        "app/auth*.py",
+    ]
+    
+    # Check if we should disable reload entirely (for production-like testing)
+    # Set DISABLE_RELOAD=true in .env to disable auto-reload
+    disable_reload = os.getenv("DISABLE_RELOAD", "false").lower() == "true"
+    
+    # For now, disable reload if tasks/__init__.py keeps causing issues
+    # The file is being modified by external processes (IDE, file watchers)
+    # You can re-enable by setting DISABLE_RELOAD=false and fixing the file watcher
+    if settings.debug and not disable_reload:
+        print("⚠️  Auto-reload is enabled. If you experience frequent reloads during requests, set DISABLE_RELOAD=true in .env")
+    
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=port,
-        reload=settings.debug,
+        reload=settings.debug and not disable_reload,
+        reload_excludes=reload_excludes if settings.debug and not disable_reload else None,
+        reload_includes=reload_includes if settings.debug and not disable_reload else None,
+        reload_delay=5.0,  # Increase delay to 5 seconds to batch file changes and reduce reload frequency
         log_level=settings.log_level.lower()
     )

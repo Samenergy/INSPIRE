@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     apify_api_token: Optional[str] = Field(default=None, env="APIFY_API_TOKEN")
     serpapi_api_key: Optional[str] = Field(default=None, env="SERPAPI_API_KEY")
     linkedin_cookie: Optional[str] = Field(default=None, env="LINKEDIN_COOKIE")
+    openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     
     @property
     def serpapi_key(self) -> Optional[str]:

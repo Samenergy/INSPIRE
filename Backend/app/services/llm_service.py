@@ -214,13 +214,30 @@ class LLMService:
     
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the loaded model"""
-        if not self.is_available():
+        from app.config import settings
+        
+        if not LLAMA_CPP_AVAILABLE:
             return {
                 "available": False,
-                "error": "Model not loaded or llama-cpp-python not available"
+                "error": "llama-cpp-python is not installed. Install with: pip install llama-cpp-python",
+                "model_path": settings.llm_model_path,
+                "model_type": "Phi-3.5 Mini 3.8B Q8_0"
             }
         
-        from app.config import settings
+        if self._llm is None:
+            import os
+            model_exists = os.path.exists(settings.llm_model_path)
+            error_msg = "Model not loaded"
+            if not model_exists:
+                error_msg = f"Model file not found at: {settings.llm_model_path}. Please download Phi-3.5 Mini model from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF"
+            
+            return {
+                "available": False,
+                "error": error_msg,
+                "model_path": settings.llm_model_path,
+                "model_type": "Phi-3.5 Mini 3.8B Q8_0",
+                "model_exists": model_exists
+            }
         
         return {
             "available": True,
