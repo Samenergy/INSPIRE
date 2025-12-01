@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green.svg)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18.2-blue.svg)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
@@ -94,7 +94,7 @@ MySQL (3306)   Redis (6379)   Milvus (19530)   Local LLM (Phi‑3.5 via llama.cp
 
 - Frontend calls FastAPI, which orchestrates scraping, ML classification, RAG, storage and campaign generation.  
 
-Docker Compose (`Backend/docker-compose.yml`) can start: backend app, Celery worker, MySQL, Redis, Milvus+etcd+MinIO and Nginx reverse proxy.
+Docker Compose ([`Backend/docker-compose.yml`](Backend/docker-compose.yml)) can start: backend app, Celery worker, MySQL, Redis, Milvus+etcd+MinIO and Nginx reverse proxy.
 
 ---
 
@@ -124,7 +124,7 @@ Docker Compose (`Backend/docker-compose.yml`) can start: backend app, Celery wor
 | **React Router** | Client routing |
 | **Chart.js + react-chartjs-2** | Analytics visualizations |
 
-Dependencies are defined in `Backend/requirements.txt` and `Frontend/package.json`.
+Dependencies are defined in [`Backend/requirements.txt`](Backend/requirements.txt) and [`Frontend/package.json`](Frontend/package.json).
 
 ---
 
@@ -133,19 +133,20 @@ Dependencies are defined in `Backend/requirements.txt` and `Frontend/package.jso
 ### Local development 
 
 - **Backend API (FastAPI)**  
-  - Base: `http://localhost:8000`  
-  - Docs (Swagger): `http://localhost:8000/docs`  
-  - ReDoc: `http://localhost:8000/redoc`  
+  - Base: [http://localhost:8000](http://localhost:8000)  
+  - Docs (Swagger): [http://localhost:8000/docs](http://localhost:8000/docs)  
+  - ReDoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)  
 - **Frontend (Vite)**  
-  - `http://localhost:5173` (default Vite) or `http://localhost:3000` depending on config  
+  - [http://localhost:5173](http://localhost:5173) (default Vite) or [http://localhost:3000](http://localhost:3000) depending on config  
 
 ### Production (as configured) 
 
-From `nginx.conf` and CORS:
+From [`nginx.conf`](Backend/nginx.conf) and CORS:
 
-- **Frontend Web App**: `https://inspire.software` (and `https://www.inspire.software`)  
-- **Backend API**: `https://api.inspire.software/doc`  
-- **API under frontend domain**: `https://inspire.software/api/...`
+- **Frontend Web App**: [https://inspire.software](https://inspire.software) (and [https://www.inspire.software](https://www.inspire.software))  
+- **Backend API**: [https://api.inspire.software](https://api.inspire.software)  
+- **API Docs**: [https://api.inspire.software/docs](https://api.inspire.software/docs)  
+- **API under frontend domain**: [https://inspire.software/api/...](https://inspire.software/api/)
 
 >  When running via Docker Compose in production, Nginx exposes port **80/443** and proxies to the backend on port **8000**.  
 
@@ -197,8 +198,8 @@ cd Backend
 docker-compose up -d
 ```
 
-- Backend API: `http://localhost:8000` (direct) or via Nginx `http://localhost` / `https://api.inspire.software`  
-- Frontend (built `dist/`): served by Nginx on `http://localhost` / `https://inspire.software`
+- Backend API: [http://localhost:8000](http://localhost:8000) (direct) or via Nginx [http://localhost](http://localhost) / [https://api.inspire.software](https://api.inspire.software)  
+- Frontend (built `dist/`): served by Nginx on [http://localhost](http://localhost) / [https://inspire.software](https://inspire.software)
 
 ### Option B – Manual local run 
 
@@ -236,7 +237,7 @@ cd Frontend
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
@@ -287,7 +288,7 @@ MAX_CONCURRENT_SCRAPES=5
 
 ### Frontend API base URL 
 
-In `Frontend/src/services/*Service.ts` (e.g. `authService.ts`, `companyService.ts`, `partnerFinderService.ts`), set:
+In `Frontend/src/services/*Service.ts` (e.g. [`authService.ts`](Frontend/src/services/authService.ts), [`companyService.ts`](Frontend/src/services/companyService.ts), [`partnerFinderService.ts`](Frontend/src/services/partnerFinderService.ts)), set:
 
 ```ts
 const API_BASE_URL = 'http://localhost:8000/api';
@@ -339,36 +340,36 @@ const API_BASE_URL = 'https://api.inspire.software';
 
 ### Base URLs
 
-- **Local:** `http://localhost:8000`  
-- **Production:** `https://api.inspire.software`
+- **Local:** [http://localhost:8000](http://localhost:8000)  
+- **Production:** [https://api.inspire.software](https://api.inspire.software)
 
 ### Interactive docs 
 
-- Swagger UI: `http://localhost:8000/docs`  
-- ReDoc: `http://localhost:8000/redoc`
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs) (local) | [https://api.inspire.software/docs](https://api.inspire.software/docs) (production)  
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc) (local) | [https://api.inspire.software/redoc](https://api.inspire.software/redoc) (production)
 
 ### Core endpoint groups (non‑exhaustive) 
 
 - **Auth / Authentification**  
-  - `POST /api/auth/signup`  
-  - `POST /api/auth/login`  
-  - `GET  /api/auth/me`  
-  - `POST /api/auth/verify-token`
+  - `POST /api/auth/signup` → [http://localhost:8000/api/auth/signup](http://localhost:8000/api/auth/signup)  
+  - `POST /api/auth/login` → [http://localhost:8000/api/auth/login](http://localhost:8000/api/auth/login)  
+  - `GET  /api/auth/me` → [http://localhost:8000/api/auth/me](http://localhost:8000/api/auth/me)  
+  - `POST /api/auth/verify-token` → [http://localhost:8000/api/auth/verify-token](http://localhost:8000/api/auth/verify-token)
 
 - **INSPIRE Database (SMEs, companies, dashboard)**  
-  - `GET /api/inspire/smes`  
-  - `GET /api/inspire/companies`  
-  - `GET /api/inspire/dashboard/stats`
+  - `GET /api/inspire/smes` → [http://localhost:8000/api/inspire/smes](http://localhost:8000/api/inspire/smes)  
+  - `GET /api/inspire/companies` → [http://localhost:8000/api/inspire/companies](http://localhost:8000/api/inspire/companies)  
+  - `GET /api/inspire/dashboard/stats` → [http://localhost:8000/api/inspire/dashboard/stats](http://localhost:8000/api/inspire/dashboard/stats)
 
 - **Unified Analysis / Analyse unifiée**  
-  - `POST /api/v1/unified/unified-analysis`  
+  - `POST /api/v1/unified/unified-analysis` → [http://localhost:8000/api/v1/unified/unified-analysis](http://localhost:8000/api/v1/unified/unified-analysis)  
 
 - **Outreach / Campagnes**  
-  - `POST /api/outreach/generate`  
-  - `GET  /api/outreach/campaigns`
+  - `POST /api/outreach/generate` → [http://localhost:8000/api/outreach/generate](http://localhost:8000/api/outreach/generate)  
+  - `GET  /api/outreach/campaigns` → [http://localhost:8000/api/outreach/campaigns](http://localhost:8000/api/outreach/campaigns)
 
 - **Partner Finder**  
-  - `GET /api/v1/partners/...`
+  - `GET /api/v1/partners/...` → [http://localhost:8000/api/v1/partners/](http://localhost:8000/api/v1/partners/)
 
 All protected endpoints require:
 
@@ -411,6 +412,12 @@ Cappp/
   README.md                # This file
 ```
 
+Key files:
+- [`Backend/app/main.py`](Backend/app/main.py) - FastAPI application entry point
+- [`Backend/docker-compose.yml`](Backend/docker-compose.yml) - Docker Compose configuration
+- [`Backend/nginx.conf`](Backend/nginx.conf) - Nginx reverse proxy configuration
+- [`Frontend/src/App.tsx`](Frontend/src/App.tsx) - Main React component
+
 ---
 
 ## Development & Testing 
@@ -441,7 +448,7 @@ npm run build:check
 
 ## Deployment 
 
-- For production, use `docker-compose up -d` from `Backend/` and configure DNS + SSL certificates for `inspire.software` and `api.inspire.software` (Nginx already expects Let’s Encrypt paths). Scale Celery workers as needed and secure environment variables.  
+- For production, use `docker-compose up -d` from `Backend/` and configure DNS + SSL certificates for [https://inspire.software](https://inspire.software) and [https://api.inspire.software](https://api.inspire.software) (Nginx already expects Let's Encrypt paths). Scale Celery workers as needed and secure environment variables.  
 
 ---
 
