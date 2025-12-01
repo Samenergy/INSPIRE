@@ -64,25 +64,25 @@ Main capabilities :
 
 - Article store with classification, relevance scoring and sentiment  
 
-### 📧 Outreach & Partner Finder
+### Outreach & Partner Finder
 
 -  Automated **campaign generation** (email / call / meeting) tailored to SME objectives  
 
 - **Partner Finder** to recommend potential partners for a given SME or company (backend router `/api/v1/partners/...`)  
 
-### 📈 Dashboard & Analytics
+### Dashboard & Analytics
 
 - Realtime stats on companies, articles, analyses, campaigns, industries, and statuses  
 
-### 🔐 Security & Authentication
+### Security & Authentication
 
 -  JWT‑based auth, protected API routes, SME profile & objectives  
 
 ---
 
-## 🏗️ System Architecture / Architecture du système
+## System Architecture
 
-**High‑level view / Vue d’ensemble :**
+**High‑level view :**
 
 ```text
 React Frontend (Vite, Port 5173/3000)  ───────►  FastAPI Backend (Port 8000)
@@ -151,9 +151,9 @@ From `nginx.conf` and CORS:
 
 ---
 
-## 📦 Installation & Dependencies 
+## Installation & Dependencies 
 
-### 1. Global prerequisites / Prérequis globaux
+### 1. Global prerequisites
 
 - Install:  
   - Node.js ≥ 18  
@@ -163,7 +163,7 @@ From `nginx.conf` and CORS:
   - C compiler / build tools (for `llama-cpp-python` if needed)  
 
 
-### 2. Backend dependencies / Dépendances backend
+### 2. Backend dependencies 
 
 ```bash
 cd Backend
@@ -190,8 +190,7 @@ This installs React, MUI, Tailwind, Chart.js, Vite and tooling.
 
 ### Option A – Docker Compose (recommended) 
 
-**EN: Start everything (backend, worker, DBs, Nginx) from `Backend/`:**  
-**FR : Démarrer l’ensemble (backend, worker, BDD, Nginx) depuis `Backend/` :**
+**Start everything (backend, worker, DBs, Nginx) from `Backend/`:**  
 
 ```bash
 cd Backend
@@ -284,7 +283,7 @@ RATE_LIMIT_WINDOW=3600
 MAX_CONCURRENT_SCRAPES=5
 ```
 
-> **EN:** By default, `app.config.Settings` will auto‑detect `.env` in `Backend/`.  
+> By default, `app.config.Settings` will auto‑detect `.env` in `Backend/`.  
 
 ### Frontend API base URL 
 
@@ -304,12 +303,11 @@ const API_BASE_URL = 'https://api.inspire.software';
 
 ---
 
-## 📖 Usage & Main Flows 
+##  Usage & Main Flows 
 
 ### 1. Auth & SME profile 
 
-- **EN:** Sign up, log in, and complete SME profile (sector, objectives).  
-- **FR :** Inscription, connexion et complétion du profil MPME (secteur, objectifs).
+- Sign up, log in, and complete SME profile (sector, objectives).  
 
 ### 2. Add & analyze a company 
 
@@ -443,11 +441,11 @@ npm run build:check
 
 ## Deployment 
 
-- **EN:** For production, use `docker-compose up -d` from `Backend/` and configure DNS + SSL certificates for `inspire.software` and `api.inspire.software` (Nginx already expects Let’s Encrypt paths). Scale Celery workers as needed and secure environment variables.  
+- For production, use `docker-compose up -d` from `Backend/` and configure DNS + SSL certificates for `inspire.software` and `api.inspire.software` (Nginx already expects Let’s Encrypt paths). Scale Celery workers as needed and secure environment variables.  
 
 ---
 
-**EN:** This README gives you a complete overview of what the project does, its features, main URLs, how to install dependencies and how to run it locally or in Docker.  
+This README gives you a complete overview of what the project does, its features, main URLs, how to install dependencies and how to run it locally or in Docker.  
 
 
 
