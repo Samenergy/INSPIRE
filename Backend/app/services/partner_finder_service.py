@@ -432,7 +432,7 @@ Example format:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "gpt-3.5-turbo",
+                        "model": "gpt-4o",
                         "messages": messages,
                         "temperature": temperature,
                         "max_tokens": max_tokens
@@ -442,7 +442,7 @@ Example format:
                     if response.status == 200:
                         data = await response.json()
                         result = data['choices'][0]['message']['content'].strip()
-                        logger.info("✅ Generated using OpenAI (gpt-3.5-turbo)")
+                        logger.info("✅ Generated using OpenAI (gpt-4o)")
                         return result
                     else:
                         error_text = await response.text()

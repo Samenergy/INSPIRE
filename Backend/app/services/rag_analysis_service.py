@@ -20,12 +20,14 @@ import re
 import copy
 import hashlib
 import numpy as np
+import aiohttp
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from collections import OrderedDict
 from loguru import logger
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from app.config import settings
 
 
 def _patch_marshmallow():
@@ -88,7 +90,7 @@ class RAGAnalysisService:
     2. Embedding (SentenceTransformer)
     3. Vector Storage (Milvus or in-memory)
     4. Retrieval (cosine similarity)
-    5. Generation (Llama-3 via Ollama)
+    5. Generation (OpenAI gpt-4o)
     6. JSON Parsing & Validation
     """
     
@@ -106,14 +108,13 @@ class RAGAnalysisService:
         self.milvus_host = milvus_host
         self.milvus_port = milvus_port
         
-        # Initialize LLM service (llama.cpp with Phi-3.5 Mini)
-        from app.services.llm_service import get_llm_service
-        self.llm_service = get_llm_service()
+        # Initialize OpenAI API key
+        self.openai_api_key = settings.openai_api_key
         
-        if not self.llm_service.is_available():
-            logger.warning("⚠️ LLM service not available. RAG analysis will fail.")
+        if not self.openai_api_key:
+            logger.warning("⚠️ OpenAI API key not configured. RAG analysis will fail.")
         else:
-            logger.info("✅ LLM service initialized (Phi-3.5 Mini via llama.cpp)")
+            logger.info("✅ RAG Analysis Service initialized with OpenAI (gpt-4o)")
         
         # Hyperparameters
         self.hyperparameters = {
@@ -129,7 +130,7 @@ class RAGAnalysisService:
         logger.info("📦 Loading SentenceTransformer model (CPU-only)...")
         import torch
         device = 'cpu'  # Always use CPU to prevent SIGSEGV crashes
-        self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device=device)
+        self.embedding_model = SentenceTransformer('BAAI/bge-m3', device=device)
         self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
         logger.info(f"✅ Embedding model loaded (dim={self.embedding_dim}, device={device})")
         
@@ -182,7 +183,7 @@ class RAGAnalysisService:
             company_name.strip().lower(),
             (sme_objective or '').strip().lower(),
             articles_signature,
-            "phi-3.5-mini",  # Model identifier for cache key
+            "openai-gpt-4o",  # Model identifier for cache key
             self.hyperparameters['chunk_size'],
             self.hyperparameters['chunk_overlap'],
             self.hyperparameters['top_k'],
@@ -443,29 +444,51 @@ class RAGAnalysisService:
         
         return chunks
     
-    def _call_llm(self, prompt: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> Optional[str]:
-        """Call Phi-3.5 Mini via llama.cpp (direct inference, no HTTP overhead)"""
+    async def _call_llm(self, prompt: str, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> Optional[str]:
+        """Call OpenAI API for LLM inference"""
+        if not self.openai_api_key:
+            logger.error("OpenAI API key not configured")
+            return None
+        
         temp = temperature if temperature is not None else self.hyperparameters['temperature']
         max_tok = max_tokens if max_tokens is not None else self.hyperparameters['max_tokens']
         
         # System message for RAG analysis
         system_message = "You are a helpful assistant that extracts structured information from company articles. Always return valid JSON."
         
-        # Use LLM service for direct inference
-        generated_text = self.llm_service.generate(
-            prompt=prompt,
-            system_message=system_message,
-            temperature=temp,
-            max_tokens=max_tok,
-            stop=["<|end|>", "</s>", "\n\n\n"]
-        )
-        
-        if generated_text:
-            logger.debug(f"✅ LLM generated {len(generated_text)} characters")
-            return generated_text
-        else:
-            logger.error("LLM returned empty response")
-        return None
+        try:
+            async with aiohttp.ClientSession() as session:
+                messages = []
+                if system_message:
+                    messages.append({"role": "system", "content": system_message})
+                messages.append({"role": "user", "content": prompt})
+                
+                async with session.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "gpt-4o",
+                        "messages": messages,
+                        "temperature": temp,
+                        "max_tokens": max_tok
+                    },
+                    timeout=aiohttp.ClientTimeout(total=120)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        generated_text = data['choices'][0]['message']['content'].strip()
+                        logger.debug(f"✅ OpenAI generated {len(generated_text)} characters")
+                        return generated_text
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"OpenAI API error: {response.status} - {error_text}")
+                        return None
+        except Exception as e:
+            logger.error(f"Error calling OpenAI: {e}")
+            return None
     
     def _parse_json_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Robustly parse JSON from LLM response"""
@@ -614,8 +637,26 @@ class RAGAnalysisService:
             context=context
         )
         
-        # Call LLM
-        response = self._call_llm(prompt)
+        # Call LLM (async, but we're in a sync context)
+        # Since extract_category is called from analyze_comprehensive which is sync,
+        # we need to run the async call in an event loop
+        import asyncio
+        try:
+            # Try to get the current event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is running (e.g., in async context), we can't use run_until_complete
+                # Use a thread pool to run the async function
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(lambda: asyncio.run(self._call_llm(prompt)))
+                    response = future.result(timeout=180)  # 3 minute timeout
+            else:
+                # No running loop, safe to use run_until_complete
+                response = loop.run_until_complete(self._call_llm(prompt))
+        except RuntimeError:
+            # No event loop exists, create one
+            response = asyncio.run(self._call_llm(prompt))
         
         if not response:
             logger.error(f"LLM returned empty response for {category_name}")
@@ -890,8 +931,7 @@ class RAGAnalysisService:
             logger.info("✅ Vector store reused successfully; skipping chunking and embedding regeneration.")
         
         # Step 4: Extract all 10 categories sequentially
-        # Note: llama.cpp inference is serialized with a lock, so parallel extraction
-        # doesn't provide speedup. Sequential is simpler and more predictable.
+        # Note: OpenAI API calls are made sequentially for simplicity and predictability.
         categories = self._get_category_configs(company_name, sme_objective)
         
         results = {}

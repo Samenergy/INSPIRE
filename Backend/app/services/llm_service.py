@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class LLMService:
     """
     Shared LLM service using llama.cpp for direct inference.
-    Uses Phi-3.5 Mini 3.8B Q8_0 for optimal speed/quality balance.
+    Uses Phi-3.5 Mini 3.8B Q4_K_M for optimal speed/quality balance.
     
     Note: In Celery workers, each process gets its own instance due to fork().
     The singleton pattern works within a process but not across forks.
@@ -70,7 +70,7 @@ class LLMService:
         # Check if model file exists
         if not os.path.exists(model_path):
             logger.error(f"Model file not found: {model_path}")
-            logger.error(f"Please download Phi-3.5 Mini Q8_0 model to: {model_path}")
+            logger.error(f"Please download Phi-3.5 Mini Q4_K_M model to: {model_path}")
             logger.error("Download from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF")
             return
         
@@ -221,7 +221,7 @@ class LLMService:
                 "available": False,
                 "error": "llama-cpp-python is not installed. Install with: pip install llama-cpp-python",
                 "model_path": settings.llm_model_path,
-                "model_type": "Phi-3.5 Mini 3.8B Q8_0"
+                "model_type": "Phi-3.5 Mini 3.8B Q4_K_M"
             }
         
         if self._llm is None:
@@ -229,13 +229,13 @@ class LLMService:
             model_exists = os.path.exists(settings.llm_model_path)
             error_msg = "Model not loaded"
             if not model_exists:
-                error_msg = f"Model file not found at: {settings.llm_model_path}. Please download Phi-3.5 Mini model from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF"
+                error_msg = f"Model file not found at: {settings.llm_model_path}. Please download Phi-3.5 Mini Q4_K_M model from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF"
             
             return {
                 "available": False,
                 "error": error_msg,
                 "model_path": settings.llm_model_path,
-                "model_type": "Phi-3.5 Mini 3.8B Q8_0",
+                "model_type": "Phi-3.5 Mini 3.8B Q4_K_M",
                 "model_exists": model_exists
             }
         

@@ -25,6 +25,7 @@ def setup_middleware(app: FastAPI):
             TrustedHostMiddleware,
             allowed_hosts=[
                 "localhost",
+                "stone.tail8b0194.ts.net",
                 "127.0.0.1",
                 "0.0.0.0",
                 "46.62.228.201",

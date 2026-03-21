@@ -934,7 +934,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch companies from backend API filtered by sme_id
       const response = await fetch(
-        `https://api.inspire.software/api/inspire/companies?sme_id=${user.sme_id}`,
+        `http://0.0.0.0:8000/api/inspire/companies?sme_id=${user.sme_id}`,
         {
         headers: {
             "Content-Type": "application/json",
@@ -978,7 +978,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             // First, try checking if there's an active analysis in the database
             try {
               const analysisResponse = await fetch(
-                `https://api.inspire.software/api/inspire/companies/${company.company_id}/analysis`,
+                `http://0.0.0.0:8000/api/inspire/companies/${company.company_id}/analysis`,
                 {
                   headers: {
                     ...(localStorage.getItem("auth_token")
@@ -1021,7 +1021,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             for (const jobId of potentialJobIds) {
               try {
                 const progressResponse = await fetch(
-                  `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${jobId}`,
+                  `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${jobId}`,
                   {
                     headers: {
                       ...(localStorage.getItem("auth_token")
@@ -1058,7 +1058,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 // Verify the job is still active
                 try {
                   const progressResponse = await fetch(
-                    `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${storedJobId}`,
+                    `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${storedJobId}`,
                     {
                       headers: {
                         ...(localStorage.getItem("auth_token")
@@ -1111,7 +1111,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
                 // Verify the job is still active
                 try {
                   const progressResponse = await fetch(
-                    `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${storedJobId}`,
+                    `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${storedJobId}`,
                     {
                       headers: {
                         ...(localStorage.getItem("auth_token")
@@ -1296,7 +1296,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       
       try {
         const progressResponse = await fetch(
-          `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${jobId}`,
+          `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${jobId}`,
           {
             headers: {
               ...(localStorage.getItem("auth_token")
@@ -1658,7 +1658,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       setLoading(true);
       
       const response = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${menuCompany.id}`,
+        `http://0.0.0.0:8000/api/inspire/companies/${menuCompany.id}`,
         {
           method: "PUT",
         headers: {
@@ -1766,7 +1766,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Start the analysis task - returns immediately
       const response = await fetch(
-        "https://api.inspire.software/api/v1/unified/unified-analysis",
+        "http://0.0.0.0:8000/api/v1/unified/unified-analysis",
         {
           method: "POST",
           headers: {
@@ -1826,7 +1826,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
             
             try {
               const progressResponse = await fetch(
-                `https://api.inspire.software/api/v1/unified/unified-analysis/progress/${jobIdentifier}`,
+                `http://0.0.0.0:8000/api/v1/unified/unified-analysis/progress/${jobIdentifier}`,
                 {
                   headers: {
                     ...(localStorage.getItem("auth_token")
@@ -2115,7 +2115,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       formData.append("outreach_type", outreachType);
 
       const response = await fetch(
-        "https://api.inspire.software/api/outreach/generate",
+        "http://0.0.0.0:8000/api/outreach/generate",
         {
           method: "POST",
         headers: {
@@ -2175,7 +2175,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch company details (includes company_info, strengths, opportunities)
       const companyResponse = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}`,
         {
           headers: {
             ...(localStorage.getItem("auth_token")
@@ -2189,7 +2189,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       
       // Fetch latest analysis
       const analysisResponse = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}/analysis`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}/analysis`,
         {
         headers: {
             ...(localStorage.getItem("auth_token")
@@ -2203,7 +2203,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // Fetch articles grouped by classification
       const articlesResponse = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}/articles`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}/articles`,
         {
         headers: {
             ...(localStorage.getItem("auth_token")
@@ -2402,7 +2402,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
   ) => {
     try {
       const response = await fetch(
-        `https://api.inspire.software/api/inspire/companies/${companyId}`,
+        `http://0.0.0.0:8000/api/inspire/companies/${companyId}`,
         {
           method: "PUT",
         headers: {
@@ -2494,7 +2494,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
       // 1. Create the company in the backend
       const response = await fetch(
-        "https://api.inspire.software/api/inspire/companies",
+        "http://0.0.0.0:8000/api/inspire/companies",
         {
           method: "POST",
         headers: {
@@ -2563,7 +2563,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
 
           // Make POST request first
           const analysisResponse = await fetch(
-            "https://api.inspire.software/api/v1/unified/unified-analysis",
+            "http://0.0.0.0:8000/api/v1/unified/unified-analysis",
             {
               method: "POST",
           headers: {
@@ -3005,7 +3005,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
           // Delete each company via API
           for (const companyId of selectedCompanies) {
             const response = await fetch(
-              `https://api.inspire.software/api/inspire/companies/${companyId}`,
+              `http://0.0.0.0:8000/api/inspire/companies/${companyId}`,
               {
                 method: "DELETE",
               headers: {
@@ -3051,7 +3051,7 @@ const Companies: React.FC<CompaniesProps> = ({ onNewCampaign }) => {
       // Delete single company
       try {
         const response = await fetch(
-          `https://api.inspire.software/api/inspire/companies/${companyToDelete}`,
+          `http://0.0.0.0:8000/api/inspire/companies/${companyToDelete}`,
           {
             method: "DELETE",
           headers: {

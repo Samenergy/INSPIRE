@@ -3,7 +3,7 @@
  * Handles SME signup, login, and token management
  */
 
-const API_BASE_URL = 'https://api.inspire.software/api/auth';
+const API_BASE_URL = 'http://0.0.0.0:8000/api/auth';
 
 export interface SMESignupBasicData {
   name: string;

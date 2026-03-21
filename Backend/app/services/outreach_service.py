@@ -9,20 +9,21 @@ from datetime import datetime
 import json
 import re
 import asyncio
+import aiohttp
 from ..models import OutreachType
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 class OutreachService:
     def __init__(self):
-        # Initialize LLM service (llama.cpp with Phi-3.5 Mini)
-        from app.services.llm_service import get_llm_service
-        self.llm_service = get_llm_service()
+        # Initialize OpenAI API key
+        self.openai_api_key = settings.openai_api_key
         
-        if not self.llm_service.is_available():
-            logger.warning("⚠️ LLM service not available. Outreach generation will fail.")
+        if not self.openai_api_key:
+            logger.warning("⚠️ OpenAI API key not configured. Outreach generation will fail.")
         else:
-            logger.info("✅ OutreachService initialized with Phi-3.5 Mini (llama.cpp)")
+            logger.info("✅ OutreachService initialized with OpenAI (gpt-4o)")
         
     async def generate_outreach_content(
         self,
@@ -349,28 +350,47 @@ Return ONLY the JSON object, nothing else.
         return await self._call_llm(prompt, "meeting")
     
     async def _call_llm(self, prompt: str, outreach_type: str) -> Dict[str, str]:
-        """Call Phi-3.5 Mini via llama.cpp to generate content."""
+        """Call OpenAI API to generate content."""
+        if not self.openai_api_key:
+            raise ValueError("OpenAI API key not configured")
+        
         try:
             # System message for outreach generation
             system_message = f"""You are a professional business outreach assistant specializing in strategic partnerships. Generate personalized {outreach_type} content that emphasizes collaboration, mutual benefits, and shared growth opportunities. Always maintain respect for the company and never use diminutive terms like "SME". Always return valid JSON with 'title' and 'content' fields."""
             
-            # Use LLM service for direct inference (run in thread pool for async compatibility)
-            def _generate():
-                return self.llm_service.generate(
-                    prompt=prompt,
-                    system_message=system_message,
-                    temperature=0.7,
-                    max_tokens=1000,
-                    stop=["<|end|>", "</s>", "\n\n\n"]
-                )
-            
-            # Run in thread pool to avoid blocking
-            generated_text = await asyncio.to_thread(_generate)
+            # Call OpenAI API
+            async with aiohttp.ClientSession() as session:
+                messages = []
+                if system_message:
+                    messages.append({"role": "system", "content": system_message})
+                messages.append({"role": "user", "content": prompt})
+                
+                async with session.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "gpt-4o",
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 1000
+                    },
+                    timeout=aiohttp.ClientTimeout(total=120)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        generated_text = data['choices'][0]['message']['content'].strip()
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"OpenAI API error: {response.status} - {error_text}")
+                        raise Exception(f"OpenAI API error: {response.status}")
             
             if not generated_text:
-                raise Exception("LLM returned empty response")
+                raise Exception("OpenAI returned empty response")
             
-            logger.info(f"✅ Successfully generated {outreach_type} content (length: {len(generated_text)})")
+            logger.info(f"✅ Successfully generated {outreach_type} content using OpenAI (length: {len(generated_text)})")
             
             # Try to parse JSON response
             try:
@@ -477,7 +497,7 @@ Return ONLY the JSON object, nothing else.
             }
                         
         except Exception as e:
-            logger.error(f"Error calling LLM for {outreach_type}: {str(e)}")
+            logger.error(f"Error calling OpenAI for {outreach_type}: {str(e)}")
             raise
     
     def _get_fallback_content(self, outreach_type: OutreachType, company_name: str) -> Dict[str, str]:

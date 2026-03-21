@@ -46,7 +46,7 @@ def check_llm_service():
         else:
             print("⚠️  LLM service not available")
             print("   Please ensure Phi-3.5 Mini model is downloaded to models/ directory")
-            print("   Download from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF")
+            print("   Download from: https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF (Q4_K_M quantization)")
         return False
     except Exception as e:
         print(f"⚠️  Could not check LLM service: {e}")
@@ -175,11 +175,11 @@ app = FastAPI(
 origins = [
     "https://inspire.software",
     "https://www.inspire.software",
-    "https://api.inspire.software",  # Allow API subdomain for internal requests
+    "http://0.0.0.0:8000",  # Allow API subdomain for internal requests
     "https://inspire-eight-rho.vercel.app",
     "http://localhost",
     "http://localhost:8000",
-    "https://api.inspire.software",
+    "http://0.0.0.0:8000",
     "http://localhost:3000",
     "http://localhost:5173",  # Vite default port
     "http://127.0.0.1:5173",  # Vite default port

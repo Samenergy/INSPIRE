@@ -123,7 +123,7 @@ async def get_model_info():
             'thresholds': model_service.config.get('thresholds', {}),
             'label_mapping': model_service.config['label_mapping'],
             'features': {
-                'transformer_embeddings': 'all-MiniLM-L6-v2',
+                'transformer_embeddings': 'BAAI/bge-m3',
                 'embedding_dimensions': 384,
                 'weak_supervision': True,
                 'hybrid_classification': True,

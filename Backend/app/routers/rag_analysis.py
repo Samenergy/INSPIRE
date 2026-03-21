@@ -66,7 +66,7 @@ def get_rag_service():
     - If URLs provided, fetches full article content
     
     **Technology Stack:**
-    - **Embeddings:** SentenceTransformer (all-MiniLM-L6-v2)
+    - **Embeddings:** SentenceTransformer (BGE-M3)
     - **Vector DB:** Milvus (with in-memory fallback)
     - **LLM:** Phi-3.5 Mini 3.8B via llama.cpp (direct inference)
     - **Retrieval:** Cosine similarity search
@@ -273,8 +273,8 @@ async def get_rag_info():
                 'step_2': {
                     'name': 'Embedding',
                     'description': 'Convert text chunks to dense vectors',
-                    'model': 'all-MiniLM-L6-v2 (SentenceTransformer)',
-                    'dimension': 384
+                    'model': 'BGE-M3 (SentenceTransformer)',
+                    'dimension': 1024
                 },
                 'step_3': {
                     'name': 'Vector Storage',
@@ -293,7 +293,7 @@ async def get_rag_info():
                 'step_5': {
                     'name': 'Generation',
                     'description': 'Extract structured information using LLM',
-                    'model': 'Phi-3.5 Mini 3.8B (via llama.cpp)',
+                    'model': 'Phi-3.5 Mini 3.8B Q4_K_M (via llama.cpp)',
                     'parameters': {
                         'temperature': 0.3,
                         'max_tokens': 800
@@ -351,9 +351,9 @@ async def get_rag_info():
             ],
             'technology_stack': {
                 'embeddings': {
-                    'model': 'all-MiniLM-L6-v2',
+                    'model': 'BAAI/bge-m3',
                     'library': 'sentence-transformers',
-                    'dimension': 384,
+                    'dimension': 1024,
                     'speed': 'Fast (CPU-friendly)'
                 },
                 'vector_database': {
@@ -362,7 +362,7 @@ async def get_rag_info():
                     'fallback': 'In-memory NumPy'
                 },
                 'llm': {
-                    'model': 'Phi-3.5 Mini 3.8B Q8_0',
+                    'model': 'Phi-3.5 Mini 3.8B Q4_K_M',
                     'provider': 'llama.cpp (direct inference)',
                     'parameters': {
                         'temperature': 0.3,
@@ -378,7 +378,7 @@ async def get_rag_info():
                 'installation': {
                     'embeddings': 'pip install sentence-transformers',
                     'milvus': 'pip install pymilvus (optional)',
-                    'llm': 'pip install llama-cpp-python && download Phi-3.5-mini-instruct-Q8_0.gguf'
+                    'llm': 'pip install llama-cpp-python && download Phi-3.5-mini-instruct-Q4_K_M.gguf'
                 }
             },
             'endpoints': {

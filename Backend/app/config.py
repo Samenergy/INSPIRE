@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     
     # LLM Configuration (llama.cpp with Phi-3.5 Mini)
     llm_model_path: str = Field(
-        default="models/Phi-3.5-mini-instruct-Q8_0.gguf",
+        default="models/Phi-3.5-mini-instruct-Q4_K_M.gguf",
         env="LLM_MODEL_PATH",
         description="Path to Phi-3.5 Mini GGUF model file"
     )

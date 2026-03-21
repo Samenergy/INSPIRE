@@ -61,7 +61,7 @@ class AdvancedModelService:
                     model_info = json.load(f)
                 self.sentence_model = SentenceTransformer(model_info['model_name'], device=device)
             else:
-                self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+                self.sentence_model = SentenceTransformer('BAAI/bge-m3', device=device)
 
             print(f"Model loaded successfully: {self.config['model_type']}")
             print(f"Model performance: F1={self.config['performance_metrics']['f1_score']:.3f}")

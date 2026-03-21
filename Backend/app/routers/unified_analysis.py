@@ -378,9 +378,9 @@ async def unified_analysis_info():
         "technology": {
             "scraping": "SerpAPI",
             "classification": "SentenceTransformer + Custom Model",
-            "rag_embeddings": "all-MiniLM-L6-v2 (384-dim)",
+            "rag_embeddings": "BGE-M3 (1024-dim)",
             "vector_storage": "Milvus (with in-memory fallback)",
-            "llm": "Phi-3.5 Mini 3.8B via llama.cpp",
+            "llm": "Phi-3.5 Mini 3.8B Q4_K_M via llama.cpp",
             "retrieval": "Cosine similarity (top-5)",
             "background_processing": "Celery",
             "progress_tracking": "Redis",

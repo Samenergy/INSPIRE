@@ -144,8 +144,8 @@ Dependencies are defined in [`Backend/requirements.txt`](Backend/requirements.tx
 From [`nginx.conf`](Backend/nginx.conf) and CORS:
 
 - **Frontend Web App**: [https://inspire.software](https://inspire.software) (and [https://www.inspire.software](https://www.inspire.software))  
-- **Backend API**: [https://api.inspire.software](https://api.inspire.software)  
-- **API Docs**: [https://api.inspire.software/docs](https://api.inspire.software/docs)  
+- **Backend API**: [http://0.0.0.0:8000](http://0.0.0.0:8000)  
+- **API Docs**: [http://0.0.0.0:8000/docs](http://0.0.0.0:8000/docs)  
 - **API under frontend domain**: [https://inspire.software/api/...](https://inspire.software/api/)
 
 >  When running via Docker Compose in production, Nginx exposes port **80/443** and proxies to the backend on port **8000**.  
@@ -198,7 +198,7 @@ cd Backend
 docker-compose up -d
 ```
 
-- Backend API: [http://localhost:8000](http://localhost:8000) (direct) or via Nginx [http://localhost](http://localhost) / [https://api.inspire.software](https://api.inspire.software)  
+- Backend API: [http://localhost:8000](http://localhost:8000) (direct) or via Nginx [http://localhost](http://localhost) / [http://0.0.0.0:8000](http://0.0.0.0:8000)  
 - Frontend (built `dist/`): served by Nginx on [http://localhost](http://localhost) / [https://inspire.software](https://inspire.software)
 
 ### Option B – Manual local run 
@@ -297,7 +297,7 @@ const API_BASE_URL = 'http://localhost:8000/api';
 For production behind Nginx:
 
 ```ts
-const API_BASE_URL = 'https://api.inspire.software';
+const API_BASE_URL = 'http://0.0.0.0:8000';
 // or if proxied via frontend domain:
 // const API_BASE_URL = 'https://inspire.software/api';
 ```
@@ -341,12 +341,12 @@ const API_BASE_URL = 'https://api.inspire.software';
 ### Base URLs
 
 - **Local:** [http://localhost:8000](http://localhost:8000)  
-- **Production:** [https://api.inspire.software](https://api.inspire.software)
+- **Production:** [http://0.0.0.0:8000](http://0.0.0.0:8000)
 
 ### Interactive docs 
 
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs) (local) | [https://api.inspire.software/docs](https://api.inspire.software/docs) (production)  
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc) (local) | [https://api.inspire.software/redoc](https://api.inspire.software/redoc) (production)
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs) (local) | [http://0.0.0.0:8000/docs](http://0.0.0.0:8000/docs) (production)  
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc) (local) | [http://0.0.0.0:8000/redoc](http://0.0.0.0:8000/redoc) (production)
 
 ### Core endpoint groups (non‑exhaustive) 
 
@@ -448,7 +448,7 @@ npm run build:check
 
 ## Deployment 
 
-- For production, use `docker-compose up -d` from `Backend/` and configure DNS + SSL certificates for [https://inspire.software](https://inspire.software) and [https://api.inspire.software](https://api.inspire.software) (Nginx already expects Let's Encrypt paths). Scale Celery workers as needed and secure environment variables.  
+- For production, use `docker-compose up -d` from `Backend/` and configure DNS + SSL certificates for [https://inspire.software](https://inspire.software) and [http://0.0.0.0:8000](http://0.0.0.0:8000) (Nginx already expects Let's Encrypt paths). Scale Celery workers as needed and secure environment variables.  
 
 ---
 
