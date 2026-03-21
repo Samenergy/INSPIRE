@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   backend_network:
     driver: bridge
@@ -10,6 +8,13 @@ services:
     build: .
     ports:
       - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_started
     environment:
       - MYSQL_URL=mysql+pymysql://app_user:app_password@mysql:3306/inspire
       - DB_NAME=inspire
@@ -54,9 +59,12 @@ services:
       - TORCH_DEVICE=cpu
       - PYTORCH_ENABLE_MPS_FALLBACK=1
     depends_on:
-      - mysql
-      - redis
-      - milvus
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_started
     volumes:
       - ./logs:/app/logs
       - ./models:/app/models  # Mount GGUF model directory
@@ -67,8 +75,6 @@ services:
   # MySQL Database
   mysql:
     image: mysql:8.0
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     environment:
@@ -80,17 +86,27 @@ services:
       - backend_network
     restart: unless-stopped
     command: --default-authentication-plugin=mysql_native_password --max-allowed-packet=67108864
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
 
   # Redis Cache
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
       - backend_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # Milvus Vector Database
   milvus:
@@ -109,6 +125,12 @@ services:
     networks:
       - backend_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 sh -c '</dev/tcp/127.0.0.1/19530' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
 
   # Milvus Dependencies - etcd
   etcd:
@@ -148,7 +170,8 @@ services:
       - ./ssl:/etc/letsencrypt:ro
       - ./certbot_www:/var/www/certbot
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     networks:
       - backend_network
     restart: unless-stopped
