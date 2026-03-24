@@ -3,7 +3,7 @@
  * Handles fetching companies from the backend API
  */
 
-const API_BASE_URL = 'http://0.0.0.0:8000/api/v1';
+const API_BASE_URL = 'https://api.inspire.software/api/v1';
 
 export interface Company {
   company_id: number;

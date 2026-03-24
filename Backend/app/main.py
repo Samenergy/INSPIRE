@@ -175,15 +175,15 @@ app = FastAPI(
 origins = [
     "https://inspire.software",
     "https://www.inspire.software",
-    "http://0.0.0.0:8000",  # Allow API subdomain for internal requests
+    "https://api.inspire.software",  # Allow API subdomain for internal requests
     "https://inspire-eight-rho.vercel.app",
     "http://localhost",
     "http://localhost:8000",
-    "http://0.0.0.0:8000",
+    "https://api.inspire.software",
     "http://localhost:3000",
     "http://localhost:5173",  # Vite default port
     "http://127.0.0.1:5173",  # Vite default port
-    "http://0.0.0.0:8000",
+    "https://api.inspire.software",
     "http://0.0.0.0:3000",
     "http://0.0.0.0:5173",
 ]

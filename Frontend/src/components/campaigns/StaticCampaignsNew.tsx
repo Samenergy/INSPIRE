@@ -255,7 +255,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
 
       try {
         setLoading(true);
-        const response = await fetch('http://0.0.0.0:8000/api/outreach/campaigns', {
+        const response = await fetch('https://api.inspire.software/api/outreach/campaigns', {
           headers: {
             'Content-Type': 'application/json',
             ...(localStorage.getItem('auth_token') ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` } : {})
@@ -350,7 +350,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
       formData.append('company_id', selectedCampaign.company_id.toString());
       formData.append('outreach_type', selectedCampaign.outreach_type);
 
-      const generateResponse = await fetch('http://0.0.0.0:8000/api/outreach/generate', {
+      const generateResponse = await fetch('https://api.inspire.software/api/outreach/generate', {
         method: 'POST',
         headers: {
           ...(localStorage.getItem('auth_token')
@@ -373,7 +373,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
       updateFormData.append('title', newContent.title);
       updateFormData.append('content', newContent.content);
 
-      const updateResponse = await fetch(`http://0.0.0.0:8000/api/outreach/campaigns/${selectedCampaign.campaign_id}`, {
+      const updateResponse = await fetch(`https://api.inspire.software/api/outreach/campaigns/${selectedCampaign.campaign_id}`, {
         method: 'PUT',
         headers: {
           ...(localStorage.getItem('auth_token')
@@ -394,7 +394,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
       // Step 3: Delete the newly created campaign (since we updated the existing one)
       if (newContent.campaign_id && newContent.campaign_id !== selectedCampaign.campaign_id) {
         try {
-          await fetch(`http://0.0.0.0:8000/api/outreach/campaigns/${newContent.campaign_id}`, {
+          await fetch(`https://api.inspire.software/api/outreach/campaigns/${newContent.campaign_id}`, {
             method: 'DELETE',
             headers: {
               'Content-Type': 'application/json',
@@ -443,7 +443,7 @@ const StaticCampaignsNew: React.FC<StaticCampaignsNewProps> = ({ onVisit }) => {
     try {
       setError(null);
 
-      const response = await fetch(`http://0.0.0.0:8000/api/outreach/campaigns/${selectedCampaign.campaign_id}`, {
+      const response = await fetch(`https://api.inspire.software/api/outreach/campaigns/${selectedCampaign.campaign_id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

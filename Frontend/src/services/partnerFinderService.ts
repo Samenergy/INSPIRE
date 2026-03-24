@@ -3,7 +3,7 @@
  * Handles AI-powered partner discovery API calls
  */
 
-const API_BASE_URL = 'http://0.0.0.0:8000/api/v1/partners';
+const API_BASE_URL = 'https://api.inspire.software/api/v1/partners';
 
 export interface Partner {
   company_id: number;
