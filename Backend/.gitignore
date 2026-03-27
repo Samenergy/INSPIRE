@@ -90,3 +90,9 @@ certbot/
 venv39
 
 venv39
+
+docker-compose.yml
+
+nginx.conf
+
+

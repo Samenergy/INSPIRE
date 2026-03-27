@@ -12,3 +12,7 @@ Backend/models/*.gguf
 Backend/models/*.ggml
 *.gguf
 *.ggml
+
+docker-compose.yml
+
+nginx.conf

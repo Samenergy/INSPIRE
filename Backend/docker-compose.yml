@@ -75,8 +75,11 @@ services:
   # MySQL Database
   mysql:
     image: mysql:8.0
+    ports:
+      - "127.0.0.1:3306:3306" 
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql_logs:/var/lib/mysql-logs  
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-password}
       - MYSQL_DATABASE=inspire
